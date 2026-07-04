@@ -1,7 +1,7 @@
 # TorchDCM
 
 <p align="center">
-  <img src="docs/assets/torchdcm-logo.svg" alt="TorchDCM logo" width="78%">
+  <img src="docs/assets/torchdcm-logo.png" alt="TorchDCM logo" width="86%">
 </p>
 
 <p align="center">
