@@ -67,6 +67,22 @@ res = nl.fit(data)
 print(res.summary())
 ```
 
+## Mixed Logit
+
+```python
+from torchdcm import MixedLogit, RandomCoefficient
+
+mixed = MixedLogit(
+    spec,
+    random_coefficients=[RandomCoefficient("B_TIME", sigma_init=0.1)],
+    n_draws=128,
+    seed=20260704,
+    panel=True,
+)
+res = mixed.fit(data)
+print(res.summary())
+```
+
 ## Development
 
 Install the package in editable mode with test dependencies:
