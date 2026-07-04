@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.egg-info/
+
+# Biogeme generated reports/configuration from benchmark runs.
+biogeme.toml
+__*.iter
+torchdcm_compare*.html
+torchdcm_compare*.yaml
