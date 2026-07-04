@@ -1,8 +1,8 @@
 # TorchDCM
 
 TorchDCM is a small PyTorch-first prototype for estimating discrete choice
-models. The current implementation focuses on the v0.1 scope from the project
-plan:
+models. The current implementation covers the v0.1 MNL core and the first
+v0.2 nested-logit building block from the project plan:
 
 - ragged long-format choice sets;
 - wide-to-long conversion for common mode choice data;
@@ -12,6 +12,7 @@ plan:
 - classical, robust, and cluster covariance estimates;
 - `fit`, `predict_proba`, `predict`, `score`, WTP, and simple elasticities;
 - Swissmetro-style and London-style test fixtures.
+- disjoint nested logit with estimated nest dissimilarity parameters.
 
 ## Quick Start
 
@@ -48,6 +49,21 @@ spec.utility("CAR", ASC_CAR + B_TIME * "time" + B_COST * "cost")
 
 model = MultinomialLogit(spec)
 res = model.fit(data, cov_type="robust")
+print(res.summary())
+```
+
+## Nested Logit
+
+```python
+from torchdcm import Nest, NestedLogit
+
+nests = {
+    "PUBLIC": Nest(["TRAIN", "SM"], init=0.8),
+    "PRIVATE": Nest(["CAR"], init=1.0, fixed=True),
+}
+
+nl = NestedLogit(spec, nests)
+res = nl.fit(data)
 print(res.summary())
 ```
 

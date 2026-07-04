@@ -83,8 +83,9 @@ class ChoiceResults:
 
     def summary(self) -> str:
         ci = self.conf_int()
+        model_name = self.model.__class__.__name__
         lines = [
-            "TorchDCM Multinomial Logit Results",
+            f"TorchDCM {model_name} Results",
             f"N obs: {self.n_obs}    log likelihood: {self.loglike:.6f}    null LL: {self.null_loglike:.6f}",
             f"rho2: {self.rho2:.6f}    rho2_bar: {self.rho2_bar:.6f}    AIC: {self.aic:.3f}    BIC: {self.bic:.3f}",
             f"covariance: {self.cov_type}    gradient norm: {self.convergence_status['gradient_norm']:.3e}",
@@ -142,4 +143,3 @@ class ChoiceResults:
         x = self.data.x_alt[variable].detach().cpu()
         beta = self.params[self.param_names.index(coefficient)].detach().cpu()
         return (beta * x * (1.0 - probs)).numpy()
-
