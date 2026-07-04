@@ -3,7 +3,10 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 
-# Biogeme generated reports/configuration from benchmark runs.
+# Local experiment and validation workspace, kept outside the package repo.
+validation/
+
+# Biogeme generated reports/configuration from ad hoc benchmark runs.
 biogeme.toml
 __*.iter
 torchdcm_compare*.html

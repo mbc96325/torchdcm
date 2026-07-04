@@ -11,8 +11,7 @@ plan:
 - availability and observation weights;
 - classical, robust, and cluster covariance estimates;
 - `fit`, `predict_proba`, `predict`, `score`, WTP, and simple elasticities;
-- Swissmetro-style and London-style test fixtures;
-- optional Biogeme comparison script.
+- Swissmetro-style and London-style test fixtures.
 
 ## Quick Start
 
@@ -52,14 +51,11 @@ res = model.fit(data, cov_type="robust")
 print(res.summary())
 ```
 
-## Optional Biogeme Comparison
+## Development
 
-After installing `torchdcm[biogeme]`, run:
+Install the package in editable mode with test dependencies:
 
 ```bash
-python benchmarks/compare_biogeme.py --case swissmetro --n-obs 500 --biogeme
-python benchmarks/compare_biogeme.py --case london --n-obs 500 --biogeme
+python -m pip install -e '.[dev]'
+python -m pytest
 ```
-
-The script estimates the same synthetic MNL specification in TorchDCM and
-Biogeme, then prints coefficient and log-likelihood differences.
