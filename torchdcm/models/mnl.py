@@ -20,6 +20,7 @@ class CompiledUtility:
     free_initial: torch.Tensor
     fixed_values: torch.Tensor
     fixed_design: torch.Tensor
+    choice_set_width: int | None
 
 
 class MultinomialLogit:
@@ -88,6 +89,7 @@ class MultinomialLogit:
             free_initial=torch.as_tensor([p.init for p in free_params], dtype=self.dtype, device=self.device),
             fixed_values=torch.as_tensor([p.init for p in fixed_params], dtype=self.dtype, device=self.device),
             fixed_design=fixed_design,
+            choice_set_width=_balanced_width(data),
         )
         self._compiled_cache[cache_key] = compiled
         return compiled
@@ -109,6 +111,17 @@ class MultinomialLogit:
         data = data.to(device=self.device, dtype=self.dtype)
         compiled = compiled or self.compile(data)
         utility = self.utilities(params, data, compiled)
+        width = compiled.choice_set_width
+        if width is not None:
+            utility_by_obs = utility.reshape(data.n_obs, width)
+            availability = data.availability.reshape(data.n_obs, width)
+            if not bool(availability.any(dim=1).all()):
+                raise ValueError("Every observation must have at least one available alternative.")
+            chosen_local = (data.chosen_row - data.obs_ptr[:-1]).reshape(-1, 1)
+            chosen_utility = utility_by_obs.gather(1, chosen_local).squeeze(1)
+            log_denom = torch.logsumexp(utility_by_obs.masked_fill(~availability, -torch.inf), dim=1)
+            return data.weights * (chosen_utility - log_denom)
+
         parts = []
         for obs in range(data.n_obs):
             start = int(data.obs_ptr[obs])
@@ -145,7 +158,7 @@ class MultinomialLogit:
         iterations = {"count": 0}
 
         def closure():
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
             loss = -self.loglike(params, data, compiled)
             loss.backward()
             iterations["count"] += 1
@@ -200,6 +213,15 @@ class MultinomialLogit:
     ) -> torch.Tensor:
         data = data.to(device=self.device, dtype=self.dtype)
         compiled = compiled or self.compile(data)
+        width = compiled.choice_set_width
+        if width is not None:
+            probabilities = self.predict_proba(data, params, compiled).reshape(data.n_obs, width)
+            design = compiled.design.reshape(data.n_obs, width, len(compiled.free_names))
+            chosen_local = (data.chosen_row - data.obs_ptr[:-1]).reshape(-1, 1, 1)
+            chosen_design = design.gather(1, chosen_local.expand(-1, 1, design.shape[-1])).squeeze(1)
+            expected_design = (probabilities.unsqueeze(-1) * design).sum(dim=1)
+            return data.weights.unsqueeze(1) * (chosen_design - expected_design)
+
         rows = []
         for obs in range(data.n_obs):
             p = params.clone().detach().requires_grad_(True)
@@ -217,6 +239,15 @@ class MultinomialLogit:
         data = data.to(device=self.device, dtype=self.dtype)
         compiled = compiled or self.compile(data)
         utility = self.utilities(params.to(device=self.device, dtype=self.dtype), data, compiled)
+        width = compiled.choice_set_width
+        if width is not None:
+            availability = data.availability.reshape(data.n_obs, width)
+            if not bool(availability.any(dim=1).all()):
+                raise ValueError("Every observation must have at least one available alternative.")
+            utility_by_obs = utility.reshape(data.n_obs, width)
+            probs = torch.softmax(utility_by_obs.masked_fill(~availability, -torch.inf), dim=1)
+            return probs.masked_fill(~availability, 0).reshape(data.n_rows)
+
         probs = torch.zeros(data.n_rows, dtype=self.dtype, device=self.device)
         for obs in range(data.n_obs):
             start = int(data.obs_ptr[obs])
@@ -241,6 +272,14 @@ class MultinomialLogit:
         return labels
 
     def null_loglike(self, data: ChoiceDataset) -> torch.Tensor:
+        data = data.to(device=self.device, dtype=self.dtype)
+        width = _balanced_width(data)
+        if width is not None:
+            n_available = data.availability.reshape(data.n_obs, width).sum(dim=1).to(dtype=data.dtype)
+            if not bool((n_available > 0).all()):
+                raise ValueError("Every observation must have at least one available alternative.")
+            return (-data.weights * torch.log(n_available)).sum()
+
         values = []
         for obs in range(data.n_obs):
             start = int(data.obs_ptr[obs])
@@ -252,6 +291,16 @@ class MultinomialLogit:
 
 def _safe_pinv(matrix: torch.Tensor) -> torch.Tensor:
     return torch.linalg.pinv(matrix, hermitian=True)
+
+
+def _balanced_width(data: ChoiceDataset) -> int | None:
+    widths = data.obs_ptr[1:] - data.obs_ptr[:-1]
+    if widths.numel() == 0:
+        return None
+    first = widths[0]
+    if bool(torch.all(widths == first)):
+        return int(first.detach().cpu())
+    return None
 
 
 def _cluster_meat(scores: torch.Tensor, cluster_codes: torch.Tensor) -> torch.Tensor:

@@ -65,7 +65,9 @@ class ChoiceDataset:
 
     def to(self, device: str | torch.device | None = None, dtype: torch.dtype | None = None) -> "ChoiceDataset":
         dtype = dtype or self.dtype
-        device = device or self.device
+        device = torch.device(device or self.device)
+        if device == self.device and dtype == self.dtype:
+            return self
         return ChoiceDataset(
             obs_ptr=self.obs_ptr.to(device=device),
             alt_id=self.alt_id.to(device=device),
