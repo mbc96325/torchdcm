@@ -39,6 +39,7 @@ class CompiledNestedUtility:
     lambda_initial: torch.Tensor
     lambda_fixed: torch.Tensor
     lambda_is_fixed: torch.Tensor
+    choice_set_width: int | None
 
 
 class NestedLogit:
@@ -158,6 +159,7 @@ class NestedLogit:
             lambda_initial=torch.as_tensor(lambda_initial, dtype=self.dtype, device=self.device),
             lambda_fixed=torch.as_tensor(lambda_fixed, dtype=self.dtype, device=self.device),
             lambda_is_fixed=torch.as_tensor(lambda_is_fixed, dtype=torch.bool, device=self.device),
+            choice_set_width=_balanced_width(data),
         )
         self._compiled_cache[cache_key] = compiled
         return compiled
@@ -180,6 +182,35 @@ class NestedLogit:
         compiled = compiled or self.compile(data)
         beta, lambdas = self._split_natural_params(params, compiled)
         utility = self.utilities(beta, data, compiled)
+        width = compiled.choice_set_width
+        if width is not None:
+            utility_by_obs = utility.reshape(data.n_obs, width)
+            availability = data.availability.reshape(data.n_obs, width)
+            nest_by_obs = compiled.nest_id.reshape(data.n_obs, width)
+            if not bool(availability.any(dim=1).all()):
+                raise ValueError("Every observation must have at least one available alternative.")
+
+            iv_columns = []
+            nest_term_columns = []
+            for nest_index in range(len(compiled.nest_names)):
+                lam = lambdas[nest_index]
+                mask = availability & (nest_by_obs == nest_index)
+                scaled = (utility_by_obs / lam).masked_fill(~mask, -torch.inf)
+                iv = torch.logsumexp(scaled, dim=1)
+                has_nest = mask.any(dim=1)
+                iv_columns.append(iv)
+                nest_term_columns.append((lam * iv).masked_fill(~has_nest, -torch.inf))
+            iv_by_nest = torch.stack(iv_columns, dim=1)
+            nest_terms = torch.stack(nest_term_columns, dim=1)
+            denom = torch.logsumexp(nest_terms, dim=1)
+
+            chosen_local = (data.chosen_row - data.obs_ptr[:-1]).reshape(-1, 1)
+            chosen_utility = utility_by_obs.gather(1, chosen_local).squeeze(1)
+            chosen_nest = nest_by_obs.gather(1, chosen_local)
+            chosen_lambda = lambdas.gather(0, chosen_nest.squeeze(1))
+            chosen_iv = iv_by_nest.gather(1, chosen_nest).squeeze(1)
+            return data.weights * (chosen_utility / chosen_lambda + (chosen_lambda - 1.0) * chosen_iv - denom)
+
         parts = []
         for obs in range(data.n_obs):
             start = int(data.obs_ptr[obs])
@@ -324,6 +355,31 @@ class NestedLogit:
         compiled = compiled or self.compile(data)
         beta, lambdas = self._split_natural_params(params.to(device=self.device, dtype=self.dtype), compiled)
         utility = self.utilities(beta, data, compiled)
+        width = compiled.choice_set_width
+        if width is not None:
+            utility_by_obs = utility.reshape(data.n_obs, width)
+            availability = data.availability.reshape(data.n_obs, width)
+            nest_by_obs = compiled.nest_id.reshape(data.n_obs, width)
+            if not bool(availability.any(dim=1).all()):
+                raise ValueError("Every observation must have at least one available alternative.")
+
+            conditional = []
+            nest_terms = []
+            for nest_index in range(len(compiled.nest_names)):
+                lam = lambdas[nest_index]
+                mask = availability & (nest_by_obs == nest_index)
+                scaled = (utility_by_obs / lam).masked_fill(~mask, -torch.inf)
+                iv = torch.logsumexp(scaled, dim=1)
+                has_nest = mask.any(dim=1)
+                conditional.append(torch.softmax(scaled, dim=1).masked_fill(~mask, 0.0))
+                nest_terms.append((lam * iv).masked_fill(~has_nest, -torch.inf))
+            nest_term_matrix = torch.stack(nest_terms, dim=1)
+            nest_probs = torch.softmax(nest_term_matrix, dim=1)
+            probs_by_obs = torch.zeros_like(utility_by_obs)
+            for nest_index, cond_prob in enumerate(conditional):
+                probs_by_obs = probs_by_obs + nest_probs[:, nest_index].unsqueeze(1) * cond_prob
+            return probs_by_obs.masked_fill(~availability, 0.0).reshape(data.n_rows)
+
         probs = torch.zeros(data.n_rows, dtype=self.dtype, device=self.device)
         for obs in range(data.n_obs):
             start = int(data.obs_ptr[obs])
@@ -365,6 +421,13 @@ class NestedLogit:
 
     def null_loglike(self, data: ChoiceDataset) -> torch.Tensor:
         data = data.to(device=self.device, dtype=self.dtype)
+        width = _balanced_width(data)
+        if width is not None:
+            n_available = data.availability.reshape(data.n_obs, width).sum(dim=1).to(dtype=data.dtype)
+            if not bool((n_available > 0).all()):
+                raise ValueError("Every observation must have at least one available alternative.")
+            return (-data.weights * torch.log(n_available)).sum()
+
         values = []
         for obs in range(data.n_obs):
             start = int(data.obs_ptr[obs])
@@ -417,6 +480,16 @@ class NestedLogit:
 
 def _safe_pinv(matrix: torch.Tensor) -> torch.Tensor:
     return torch.linalg.pinv(matrix, hermitian=True)
+
+
+def _balanced_width(data: ChoiceDataset) -> int | None:
+    widths = data.obs_ptr[1:] - data.obs_ptr[:-1]
+    if widths.numel() == 0:
+        return None
+    first = widths[0]
+    if bool(torch.all(widths == first)):
+        return int(first.detach().cpu())
+    return None
 
 
 def _cluster_meat(scores: torch.Tensor, cluster_codes: torch.Tensor) -> torch.Tensor:

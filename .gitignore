@@ -12,3 +12,5 @@ biogeme.toml
 __*.iter
 torchdcm_compare*.html
 torchdcm_compare*.yaml
+torchdcm_nl_compare*.html
+torchdcm_nl_compare*.yaml
