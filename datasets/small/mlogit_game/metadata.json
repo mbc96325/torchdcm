@@ -1,0 +1,14 @@
+{
+  "columns": 14,
+  "dataset_id": "mlogit_game",
+  "dataset_name": "Game",
+  "license_or_terms": "CRAN package license/data terms",
+  "notes": {
+    "r_object": "Game",
+    "r_package": "mlogit"
+  },
+  "rows": 91,
+  "sha256": "f362219d480788d0a1ff58505584a1ccb66bc75437c4972eb0e942085a98924f",
+  "source_family": "R mlogit",
+  "upstream_url": "https://cran.r-project.org/web/packages/mlogit/mlogit.pdf"
+}

@@ -1,0 +1,14 @@
+{
+  "columns": 20,
+  "dataset_id": "apollo_time_use",
+  "dataset_name": "Time use",
+  "license_or_terms": "Apollo examples/data terms",
+  "notes": {
+    "r_object": "apollo_timeUseData",
+    "r_package": "apollo"
+  },
+  "rows": 2826,
+  "sha256": "cf97f3808ed9cbd4cd278d1dd73d9a2bde40793a6bc8332327eea6015cc6d243",
+  "source_family": "Apollo",
+  "upstream_url": "https://www.apollochoicemodelling.com/examples.html"
+}

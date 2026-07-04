@@ -1,0 +1,14 @@
+{
+  "columns": 26,
+  "dataset_id": "mlogit_electricity",
+  "dataset_name": "Electricity",
+  "license_or_terms": "CRAN package license/data terms",
+  "notes": {
+    "r_object": "Electricity",
+    "r_package": "mlogit"
+  },
+  "rows": 4308,
+  "sha256": "9e8b5b3abf6f06aa2e2a11747004083dcd1b7d59412310679889a171a8f00190",
+  "source_family": "R mlogit",
+  "upstream_url": "https://cran.r-project.org/web/packages/mlogit/mlogit.pdf"
+}

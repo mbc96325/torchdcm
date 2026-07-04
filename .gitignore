@@ -4,6 +4,11 @@ __pycache__/
 *.egg-info/
 .DS_Store
 
+# Large processed benchmark artifacts are published outside GitHub.
+datasets/large/processed/
+datasets/large/releases/*
+!datasets/large/releases/.gitkeep
+
 # Local experiment and validation workspace, kept outside the package repo.
 validation/
 

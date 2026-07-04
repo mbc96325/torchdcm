@@ -1,0 +1,14 @@
+{
+  "columns": 9,
+  "dataset_id": "mlogit_mode",
+  "dataset_name": "Mode",
+  "license_or_terms": "CRAN package license/data terms",
+  "notes": {
+    "r_object": "Mode",
+    "r_package": "mlogit"
+  },
+  "rows": 453,
+  "sha256": "583d12700de5d2511115e47bc0b038175aa6f7f0f17ec380e3f09a459e8d3d5f",
+  "source_family": "R mlogit",
+  "upstream_url": "https://cran.r-project.org/web/packages/mlogit/mlogit.pdf"
+}

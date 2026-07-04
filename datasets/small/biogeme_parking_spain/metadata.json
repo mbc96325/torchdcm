@@ -1,0 +1,14 @@
+{
+  "columns": 31,
+  "dataset_id": "biogeme_parking_spain",
+  "dataset_name": "Parking choice in Spain",
+  "license_or_terms": "Upstream Biogeme data page terms",
+  "notes": {
+    "source_page": "https://biogeme.epfl.ch/#data",
+    "source_url": "https://transp-or.epfl.ch/data/parking.dat"
+  },
+  "rows": 1576,
+  "sha256": "2c5bb4123420cb328bbc1b7f919942697e7e296333184ca53ca64ee499d36094",
+  "source_family": "Biogeme",
+  "upstream_url": "https://transp-or.epfl.ch/data/parking.dat"
+}

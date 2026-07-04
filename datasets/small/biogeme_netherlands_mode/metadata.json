@@ -1,0 +1,14 @@
+{
+  "columns": 28,
+  "dataset_id": "biogeme_netherlands_mode",
+  "dataset_name": "Mode choice in the Netherlands",
+  "license_or_terms": "Upstream Biogeme data page terms",
+  "notes": {
+    "source_page": "https://biogeme.epfl.ch/#data",
+    "source_url": "https://transp-or.epfl.ch/data/netherlands.dat"
+  },
+  "rows": 1739,
+  "sha256": "220a85599b1d1095c82ab853f7bb828534b06051a7f0d3e4f5bc86806f1744f1",
+  "source_family": "Biogeme",
+  "upstream_url": "https://transp-or.epfl.ch/data/netherlands.dat"
+}

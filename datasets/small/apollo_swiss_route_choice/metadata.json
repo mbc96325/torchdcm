@@ -1,0 +1,14 @@
+{
+  "columns": 16,
+  "dataset_id": "apollo_swiss_route_choice",
+  "dataset_name": "Swiss route choice",
+  "license_or_terms": "Apollo examples/data terms",
+  "notes": {
+    "r_object": "apollo_swissRouteChoiceData",
+    "r_package": "apollo"
+  },
+  "rows": 3492,
+  "sha256": "15bdda9192689bb707593b01b05a281eb7cde0dbe0cc5141ff56f2010ac7ac38",
+  "source_family": "Apollo",
+  "upstream_url": "https://www.apollochoicemodelling.com/examples.html"
+}

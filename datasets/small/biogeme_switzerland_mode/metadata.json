@@ -1,0 +1,14 @@
+{
+  "columns": 117,
+  "dataset_id": "biogeme_switzerland_mode",
+  "dataset_name": "Mode choice in Switzerland",
+  "license_or_terms": "Upstream Biogeme data page terms",
+  "notes": {
+    "source_page": "https://biogeme.epfl.ch/#data",
+    "source_url": "https://transp-or.epfl.ch/data/optima.dat"
+  },
+  "rows": 2265,
+  "sha256": "49b30d33e63e1ab3c4ba517081a5d4b0bfdcaab3429e841dd0c5191a8a9e479e",
+  "source_family": "Biogeme",
+  "upstream_url": "https://transp-or.epfl.ch/data/optima.dat"
+}

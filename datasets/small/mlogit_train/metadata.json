@@ -1,0 +1,14 @@
+{
+  "columns": 11,
+  "dataset_id": "mlogit_train",
+  "dataset_name": "Train",
+  "license_or_terms": "CRAN package license/data terms",
+  "notes": {
+    "r_object": "Train",
+    "r_package": "mlogit"
+  },
+  "rows": 2929,
+  "sha256": "2f84a0dab87884445730a71fc7a8e7b7d9c5730505b31248d930a356f18bf3b8",
+  "source_family": "R mlogit",
+  "upstream_url": "https://cran.r-project.org/web/packages/mlogit/mlogit.pdf"
+}

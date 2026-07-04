@@ -1,0 +1,14 @@
+{
+  "columns": 70,
+  "dataset_id": "mlogit_car",
+  "dataset_name": "Car",
+  "license_or_terms": "CRAN package license/data terms",
+  "notes": {
+    "r_object": "Car",
+    "r_package": "mlogit"
+  },
+  "rows": 4654,
+  "sha256": "be7a64781b30798091adbeecced45702ac6e07f4e6d7cc11ae533b1a0153b7c3",
+  "source_family": "R mlogit",
+  "upstream_url": "https://cran.r-project.org/web/packages/mlogit/mlogit.pdf"
+}

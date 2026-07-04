@@ -1,0 +1,14 @@
+{
+  "columns": 17,
+  "dataset_id": "mlogit_japanese_fdi",
+  "dataset_name": "JapaneseFDI",
+  "license_or_terms": "CRAN package license/data terms",
+  "notes": {
+    "r_object": "JapaneseFDI",
+    "r_package": "mlogit"
+  },
+  "rows": 25764,
+  "sha256": "f1e233d9caf338943d23776126b9382c2f198658398abae660172fc8af42826d",
+  "source_family": "R mlogit",
+  "upstream_url": "https://cran.r-project.org/web/packages/mlogit/mlogit.pdf"
+}

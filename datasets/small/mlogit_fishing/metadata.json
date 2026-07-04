@@ -1,0 +1,14 @@
+{
+  "columns": 10,
+  "dataset_id": "mlogit_fishing",
+  "dataset_name": "Fishing",
+  "license_or_terms": "CRAN package license/data terms",
+  "notes": {
+    "r_object": "Fishing",
+    "r_package": "mlogit"
+  },
+  "rows": 1182,
+  "sha256": "0075e212538712bd876c571803a07822b4edbd708d8fc41fa89a8765741a9caf",
+  "source_family": "R mlogit",
+  "upstream_url": "https://cran.r-project.org/web/packages/mlogit/mlogit.pdf"
+}

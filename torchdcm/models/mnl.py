@@ -21,6 +21,7 @@ class CompiledUtility:
     fixed_values: torch.Tensor
     fixed_design: torch.Tensor
     choice_set_width: int | None
+    row_to_obs: torch.Tensor
 
 
 class MultinomialLogit:
@@ -90,6 +91,7 @@ class MultinomialLogit:
             fixed_values=torch.as_tensor([p.init for p in fixed_params], dtype=self.dtype, device=self.device),
             fixed_design=fixed_design,
             choice_set_width=_balanced_width(data),
+            row_to_obs=_row_to_obs(data),
         )
         self._compiled_cache[cache_key] = compiled
         return compiled
@@ -122,18 +124,7 @@ class MultinomialLogit:
             log_denom = torch.logsumexp(utility_by_obs.masked_fill(~availability, -torch.inf), dim=1)
             return data.weights * (chosen_utility - log_denom)
 
-        parts = []
-        for obs in range(data.n_obs):
-            start = int(data.obs_ptr[obs])
-            end = int(data.obs_ptr[obs + 1])
-            segment = utility[start:end]
-            mask = data.availability[start:end]
-            if not bool(mask.any()):
-                raise ValueError("Every observation must have at least one available alternative.")
-            chosen = int(data.chosen_row[obs])
-            log_denom = torch.logsumexp(segment[mask], dim=0)
-            parts.append(data.weights[obs] * (utility[chosen] - log_denom))
-        return torch.stack(parts)
+        return _ragged_loglike_per_obs(utility, data, compiled.row_to_obs)
 
     def loglike(self, params: torch.Tensor, data: ChoiceDataset, compiled: CompiledUtility | None = None) -> torch.Tensor:
         return self.loglike_per_obs(params, data, compiled).sum()
@@ -248,17 +239,7 @@ class MultinomialLogit:
             probs = torch.softmax(utility_by_obs.masked_fill(~availability, -torch.inf), dim=1)
             return probs.masked_fill(~availability, 0).reshape(data.n_rows)
 
-        probs = torch.zeros(data.n_rows, dtype=self.dtype, device=self.device)
-        for obs in range(data.n_obs):
-            start = int(data.obs_ptr[obs])
-            end = int(data.obs_ptr[obs + 1])
-            mask = data.availability[start:end]
-            seg = utility[start:end]
-            values = torch.softmax(seg[mask], dim=0)
-            local = torch.zeros(end - start, dtype=self.dtype, device=self.device)
-            local[mask] = values
-            probs[start:end] = local
-        return probs
+        return _ragged_probabilities(utility, data, compiled.row_to_obs)
 
     def predict(self, data: ChoiceDataset, params: torch.Tensor) -> list[str]:
         data = data.to(device=self.device, dtype=self.dtype)
@@ -301,6 +282,34 @@ def _balanced_width(data: ChoiceDataset) -> int | None:
     if bool(torch.all(widths == first)):
         return int(first.detach().cpu())
     return None
+
+
+def _row_to_obs(data: ChoiceDataset) -> torch.Tensor:
+    widths = data.obs_ptr[1:] - data.obs_ptr[:-1]
+    return torch.repeat_interleave(torch.arange(data.n_obs, dtype=torch.long, device=data.device), widths)
+
+
+def _ragged_probabilities(utility: torch.Tensor, data: ChoiceDataset, row_to_obs: torch.Tensor) -> torch.Tensor:
+    masked_utility = utility.masked_fill(~data.availability, -torch.inf)
+    max_by_obs = torch.full((data.n_obs,), -torch.inf, dtype=utility.dtype, device=utility.device)
+    max_by_obs = max_by_obs.scatter_reduce(0, row_to_obs, masked_utility, reduce="amax", include_self=True)
+    if not bool(torch.isfinite(max_by_obs).all()):
+        raise ValueError("Every observation must have at least one available alternative.")
+    exp_utility = torch.exp(masked_utility - max_by_obs[row_to_obs]).masked_fill(~data.availability, 0.0)
+    denom = torch.zeros(data.n_obs, dtype=utility.dtype, device=utility.device).scatter_add(0, row_to_obs, exp_utility)
+    return exp_utility / denom[row_to_obs]
+
+
+def _ragged_loglike_per_obs(utility: torch.Tensor, data: ChoiceDataset, row_to_obs: torch.Tensor) -> torch.Tensor:
+    masked_utility = utility.masked_fill(~data.availability, -torch.inf)
+    max_by_obs = torch.full((data.n_obs,), -torch.inf, dtype=utility.dtype, device=utility.device)
+    max_by_obs = max_by_obs.scatter_reduce(0, row_to_obs, masked_utility, reduce="amax", include_self=True)
+    if not bool(torch.isfinite(max_by_obs).all()):
+        raise ValueError("Every observation must have at least one available alternative.")
+    exp_utility = torch.exp(masked_utility - max_by_obs[row_to_obs]).masked_fill(~data.availability, 0.0)
+    denom = torch.zeros(data.n_obs, dtype=utility.dtype, device=utility.device).scatter_add(0, row_to_obs, exp_utility)
+    chosen_utility = utility[data.chosen_row]
+    return data.weights * (chosen_utility - max_by_obs - torch.log(denom))
 
 
 def _cluster_meat(scores: torch.Tensor, cluster_codes: torch.Tensor) -> torch.Tensor:

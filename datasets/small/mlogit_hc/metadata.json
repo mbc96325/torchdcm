@@ -1,0 +1,14 @@
+{
+  "columns": 18,
+  "dataset_id": "mlogit_hc",
+  "dataset_name": "HC",
+  "license_or_terms": "CRAN package license/data terms",
+  "notes": {
+    "r_object": "HC",
+    "r_package": "mlogit"
+  },
+  "rows": 250,
+  "sha256": "18c01eec61cf6a230317986a4398f71454225c0c84aae50865617d42363dfc92",
+  "source_family": "R mlogit",
+  "upstream_url": "https://cran.r-project.org/web/packages/mlogit/mlogit.pdf"
+}

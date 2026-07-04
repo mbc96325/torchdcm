@@ -1,0 +1,14 @@
+{
+  "columns": 21,
+  "dataset_id": "mlogit_heating",
+  "dataset_name": "Heating",
+  "license_or_terms": "CRAN package license/data terms",
+  "notes": {
+    "r_object": "Heating",
+    "r_package": "mlogit"
+  },
+  "rows": 900,
+  "sha256": "265882191947e9f8455539a870b1f53537ee48c57732bb7919aa199f636e8aec",
+  "source_family": "R mlogit",
+  "upstream_url": "https://cran.r-project.org/web/packages/mlogit/mlogit.pdf"
+}

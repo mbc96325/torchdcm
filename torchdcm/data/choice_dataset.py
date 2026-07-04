@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable, Mapping
 
 import numpy as np
 import pandas as pd
 import torch
+
+from torchdcm.data.panel import PanelStructure
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,7 @@ class ChoiceDataset:
     alt_names: list[str]
     obs_to_ind: torch.Tensor | None = None
     individual_ids: list | None = None
+    x_obs: dict[str, torch.Tensor] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.obs_ptr.ndim != 1:
@@ -42,6 +45,9 @@ class ChoiceDataset:
         for name, value in self.x_alt.items():
             if len(value) != self.n_rows:
                 raise ValueError(f"x_alt[{name!r}] must have one value per long row.")
+        for name, value in self.x_obs.items():
+            if len(value) != self.n_obs:
+                raise ValueError(f"x_obs[{name!r}] must have one value per observation.")
 
     @property
     def n_obs(self) -> int:
@@ -54,6 +60,16 @@ class ChoiceDataset:
     @property
     def n_alternatives(self) -> int:
         return len(self.alt_names)
+
+    @property
+    def has_panel(self) -> bool:
+        return self.obs_to_ind is not None
+
+    @property
+    def n_individuals(self) -> int:
+        if self.obs_to_ind is None:
+            return self.n_obs
+        return len(self.individual_ids or [])
 
     @property
     def dtype(self) -> torch.dtype:
@@ -79,6 +95,7 @@ class ChoiceDataset:
             alt_names=list(self.alt_names),
             obs_to_ind=None if self.obs_to_ind is None else self.obs_to_ind.to(device=device),
             individual_ids=None if self.individual_ids is None else list(self.individual_ids),
+            x_obs={k: v.to(device=device, dtype=dtype) for k, v in self.x_obs.items()},
         )
 
     def cluster_codes(self, groups: str | Iterable | torch.Tensor | None = None) -> torch.Tensor | None:
@@ -102,6 +119,15 @@ class ChoiceDataset:
         _, codes = np.unique(np.asarray(values), return_inverse=True)
         return torch.as_tensor(codes, dtype=torch.long, device=self.device)
 
+    def panel_structure(self, *, require: bool = True) -> PanelStructure | None:
+        """Return the repeated-choice mapping encoded by ``individual_id``."""
+
+        if self.obs_to_ind is None:
+            if require:
+                raise ValueError("Dataset has no individual_id mapping.")
+            return None
+        return PanelStructure(obs_to_unit=self.obs_to_ind, unit_ids=list(self.individual_ids or []))
+
     @classmethod
     def from_long(
         cls,
@@ -111,6 +137,7 @@ class ChoiceDataset:
         alt_id: str,
         choice: str,
         variables: Iterable[str],
+        obs_variables: Iterable[str] | Mapping[str, str] | None = None,
         availability: str | None = None,
         weight: str | None = None,
         individual_id: str | None = None,
@@ -121,7 +148,8 @@ class ChoiceDataset:
         """Build a ragged dataset from one row per observation-alternative."""
 
         variables = list(variables)
-        missing = [c for c in [obs_id, alt_id, choice, *variables] if c not in df.columns]
+        obs_variable_map = _normalize_obs_variables(obs_variables)
+        missing = [c for c in [obs_id, alt_id, choice, *variables, *obs_variable_map.values()] if c not in df.columns]
         if missing:
             raise ValueError(f"Missing columns in long data: {missing}")
 
@@ -144,6 +172,7 @@ class ChoiceDataset:
         chosen_rows: list[int] = []
         weights: list[float] = []
         obs_to_ind: list[int] = []
+        x_obs_values: dict[str, list[float]] = {name: [] for name in obs_variable_map}
         individual_ids: list | None = [] if individual_id else None
         individual_map = {}
 
@@ -173,6 +202,11 @@ class ChoiceDataset:
                     assert individual_ids is not None
                     individual_ids.append(ind)
                 obs_to_ind.append(individual_map[ind])
+            for name, column in obs_variable_map.items():
+                unique_values = pd.unique(group[column])
+                if len(unique_values) != 1:
+                    raise ValueError(f"Observation variable {column!r} must be constant within an observation.")
+                x_obs_values[name].append(float(unique_values[0]))
 
         avail_values = (
             np.ones(len(frame), dtype=bool)
@@ -197,6 +231,10 @@ class ChoiceDataset:
             alt_names=alt_names,
             obs_to_ind=None if individual_id is None else torch.as_tensor(obs_to_ind, dtype=torch.long, device=device),
             individual_ids=individual_ids,
+            x_obs={
+                name: torch.as_tensor(values, dtype=dtype, device=device)
+                for name, values in x_obs_values.items()
+            },
         )
 
     @classmethod
@@ -207,6 +245,7 @@ class ChoiceDataset:
         alternatives: Iterable[str],
         choice: str,
         variables: Mapping[str, Mapping[str, str] | str],
+        obs_variables: Iterable[str] | Mapping[str, str] | None = None,
         availability: Mapping[str, str] | None = None,
         obs_id: str | None = None,
         weight: str | None = None,
@@ -217,6 +256,7 @@ class ChoiceDataset:
         """Convert a wide mode-choice table to long format and return a dataset."""
 
         alternatives = list(alternatives)
+        obs_variable_map = _normalize_obs_variables(obs_variables)
         rows = []
         for row_no, (_, row) in enumerate(df.iterrows()):
             obs_value = row[obs_id] if obs_id else row_no
@@ -231,6 +271,8 @@ class ChoiceDataset:
                     long_row["_weight"] = row[weight]
                 if individual_id:
                     long_row["_individual_id"] = row[individual_id]
+                for var_name, column in obs_variable_map.items():
+                    long_row[var_name] = row[column]
                 if availability is not None:
                     long_row["_availability"] = bool(row[availability[alt]])
                 for var_name, columns in variables.items():
@@ -247,6 +289,7 @@ class ChoiceDataset:
             alt_id="_alt_id",
             choice="_chosen",
             variables=list(variables.keys()),
+            obs_variables=obs_variable_map,
             availability="_availability" if availability is not None else None,
             weight="_weight" if weight else None,
             individual_id="_individual_id" if individual_id else None,
@@ -254,3 +297,11 @@ class ChoiceDataset:
             dtype=dtype,
             device=device,
         )
+
+
+def _normalize_obs_variables(obs_variables: Iterable[str] | Mapping[str, str] | None) -> dict[str, str]:
+    if obs_variables is None:
+        return {}
+    if isinstance(obs_variables, Mapping):
+        return dict(obs_variables)
+    return {name: name for name in obs_variables}

@@ -1,0 +1,14 @@
+{
+  "columns": 56,
+  "dataset_id": "biogeme_airline_itinerary",
+  "dataset_name": "Airline itinerary",
+  "license_or_terms": "Upstream Biogeme data page terms",
+  "notes": {
+    "source_page": "https://biogeme.epfl.ch/#data",
+    "source_url": "https://transp-or.epfl.ch/data/airline.dat"
+  },
+  "rows": 3609,
+  "sha256": "6ec49f296057937d1d62bfbd87e1e5c4d3e3ee04a97982aeb53e35d1115ea586",
+  "source_family": "Biogeme",
+  "upstream_url": "https://transp-or.epfl.ch/data/airline.dat"
+}

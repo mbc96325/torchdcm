@@ -1,0 +1,14 @@
+{
+  "columns": 33,
+  "dataset_id": "biogeme_mdcev",
+  "dataset_name": "MDCEV data",
+  "license_or_terms": "Upstream Biogeme example data terms",
+  "notes": {
+    "python_package": "biogeme.data.mdcev_data",
+    "source_file": "/home/baichuan-mo/torchdcm/.venv/lib/python3.12/site-packages/biogeme/data/data/mdcev.csv"
+  },
+  "rows": 4413,
+  "sha256": "c93b48702ebd3246c93a9d0a252bd9c41f63f35848696ea19113d6292a58798c",
+  "source_family": "Biogeme",
+  "upstream_url": "https://biogeme.epfl.ch/sphinx/auto_examples/index.html"
+}

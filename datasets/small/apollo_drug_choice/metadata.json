@@ -1,0 +1,14 @@
+{
+  "columns": 33,
+  "dataset_id": "apollo_drug_choice",
+  "dataset_name": "Drug choice",
+  "license_or_terms": "Apollo examples/data terms",
+  "notes": {
+    "r_object": "apollo_drugChoiceData",
+    "r_package": "apollo"
+  },
+  "rows": 10000,
+  "sha256": "0b475ddd630c7c204c8245319256e50601d17fd6e531be36c1c419c7c9cb2536",
+  "source_family": "Apollo",
+  "upstream_url": "https://www.apollochoicemodelling.com/examples.html"
+}

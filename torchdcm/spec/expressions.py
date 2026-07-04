@@ -18,6 +18,16 @@ class Term:
 class Expression:
     terms: list[Term]
 
+    @property
+    def parameters(self) -> list["Beta"]:
+        params = {}
+        for term in self.terms:
+            old = params.get(term.parameter.name)
+            if old is not None and old != term.parameter:
+                raise ValueError(f"Conflicting definitions for parameter {term.parameter.name!r}.")
+            params[term.parameter.name] = term.parameter
+        return list(params.values())
+
     def __add__(self, other) -> "Expression":
         if other == 0:
             return self
@@ -46,4 +56,3 @@ def _as_expression(value) -> Expression:
     if hasattr(value, "name") and hasattr(value, "init"):
         return Expression([Term(value, None, 1.0)])
     raise TypeError(f"Cannot convert {type(value)!r} to a utility expression.")
-

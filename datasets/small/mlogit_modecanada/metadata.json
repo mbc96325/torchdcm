@@ -1,0 +1,14 @@
+{
+  "columns": 11,
+  "dataset_id": "mlogit_modecanada",
+  "dataset_name": "ModeCanada",
+  "license_or_terms": "CRAN package license/data terms",
+  "notes": {
+    "r_object": "ModeCanada",
+    "r_package": "mlogit"
+  },
+  "rows": 15520,
+  "sha256": "6eb7374461038bc3141296f6987810eac7245aae0af3abc1e441727f3f28c2ea",
+  "source_family": "R mlogit",
+  "upstream_url": "https://cran.r-project.org/web/packages/mlogit/mlogit.pdf"
+}

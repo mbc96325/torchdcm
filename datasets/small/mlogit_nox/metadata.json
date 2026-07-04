@@ -1,0 +1,14 @@
+{
+  "columns": 12,
+  "dataset_id": "mlogit_nox",
+  "dataset_name": "NOx",
+  "license_or_terms": "CRAN package license/data terms",
+  "notes": {
+    "r_object": "NOx",
+    "r_package": "mlogit"
+  },
+  "rows": 9480,
+  "sha256": "58bf660fd8b9de076fd18eb539696ffef524f74679204f3cf8cb989669dd9bb3",
+  "source_family": "R mlogit",
+  "upstream_url": "https://cran.r-project.org/web/packages/mlogit/mlogit.pdf"
+}

@@ -1,0 +1,14 @@
+{
+  "columns": 28,
+  "dataset_id": "biogeme_swissmetro",
+  "dataset_name": "Swissmetro",
+  "license_or_terms": "Upstream Biogeme example data terms",
+  "notes": {
+    "python_package": "biogeme.data.swissmetro",
+    "source_file": "/home/baichuan-mo/torchdcm/.venv/lib/python3.12/site-packages/biogeme/data/data/swissmetro.dat"
+  },
+  "rows": 10728,
+  "sha256": "db90e0cc4916186c8f143b2bd2a89fb0531dcd296b8b6cf0c749e736e5d90e2c",
+  "source_family": "Biogeme",
+  "upstream_url": "https://biogeme.epfl.ch/sphinx/auto_examples/index.html"
+}

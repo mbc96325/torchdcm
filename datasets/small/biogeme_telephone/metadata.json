@@ -1,0 +1,14 @@
+{
+  "columns": 25,
+  "dataset_id": "biogeme_telephone",
+  "dataset_name": "Telephone data",
+  "license_or_terms": "Upstream Biogeme data page terms",
+  "notes": {
+    "source_page": "https://biogeme.epfl.ch/#data",
+    "source_url": "https://transp-or.epfl.ch/data/telephone.dat"
+  },
+  "rows": 434,
+  "sha256": "75cbfbf9bc3ff4dce0d77b9e4637cd91cd734579d23e5bf1784d2dedbd1f2619",
+  "source_family": "Biogeme",
+  "upstream_url": "https://transp-or.epfl.ch/data/telephone.dat"
+}

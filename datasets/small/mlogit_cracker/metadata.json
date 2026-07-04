@@ -1,0 +1,14 @@
+{
+  "columns": 14,
+  "dataset_id": "mlogit_cracker",
+  "dataset_name": "Cracker",
+  "license_or_terms": "CRAN package license/data terms",
+  "notes": {
+    "r_object": "Cracker",
+    "r_package": "mlogit"
+  },
+  "rows": 3292,
+  "sha256": "bec185123d82bbf7fe5a559a51cd58c289019b0b1bcd173e2423883d6a29a03c",
+  "source_family": "R mlogit",
+  "upstream_url": "https://cran.r-project.org/web/packages/mlogit/mlogit.pdf"
+}

@@ -13,16 +13,18 @@ from torchdcm.spec.utility import UtilitySpec
 
 @dataclass(frozen=True)
 class RandomCoefficient:
-    """Normal random coefficient specification.
+    """Random coefficient specification.
 
-    The mean is the corresponding ``Beta`` in the utility specification. The
-    standard deviation is represented by ``sigma_name`` and constrained to be
-    non-negative during estimation unless it is fixed.
+    The location parameter is the corresponding ``Beta`` in the utility
+    specification. For lognormal variants, that parameter is on the latent
+    normal scale. The standard deviation is represented by ``sigma_name`` and
+    constrained to be non-negative during estimation unless it is fixed.
     """
 
     name: str
     sigma_init: float = 0.1
     sigma_name: str | None = None
+    distribution: Literal["normal", "lognormal", "negative_lognormal"] = "normal"
     fixed: bool = False
 
 
@@ -36,9 +38,15 @@ class CompiledMixedUtility:
     fixed_values: torch.Tensor
     fixed_design: torch.Tensor
     random_beta_indices: torch.Tensor
+    random_fixed_indices: torch.Tensor
+    random_is_fixed_beta: torch.Tensor
     sigma_initial: torch.Tensor
     sigma_fixed: torch.Tensor
     sigma_is_fixed: torch.Tensor
+    distributions: list[str]
+    correlated: bool
+    chol_offdiag_names: list[str]
+    chol_offdiag_initial: torch.Tensor
     draws: torch.Tensor
     choice_set_width: int | None
 
@@ -62,6 +70,7 @@ class MixedLogit:
         tolerance_grad: float = 1e-7,
         line_search_fn: str | None = "strong_wolfe",
         sigma_min: float = 0.0,
+        correlated: bool = False,
     ) -> None:
         self.spec = spec
         if isinstance(random_coefficients, dict):
@@ -82,6 +91,7 @@ class MixedLogit:
         self.tolerance_grad = tolerance_grad
         self.line_search_fn = line_search_fn
         self.sigma_min = sigma_min
+        self.correlated = correlated
         self._compiled_cache: dict[int, CompiledMixedUtility] = {}
 
     @classmethod
@@ -102,9 +112,17 @@ class MixedLogit:
         mnl = MultinomialLogit(self.spec, dtype=self.dtype, device=self.device)
         compiled_mnl = mnl.compile(data)
         beta_index = {name: i for i, name in enumerate(compiled_mnl.free_names)}
-        missing = [rc.name for rc in self.random_coefficients if rc.name not in beta_index]
+        fixed_beta_index = {name: i for i, name in enumerate(compiled_mnl.fixed_names)}
+        all_beta_names = set(beta_index) | set(fixed_beta_index)
+        missing = [rc.name for rc in self.random_coefficients if rc.name not in all_beta_names]
         if missing:
-            raise ValueError(f"Random coefficients must refer to free utility parameters. Missing: {missing}")
+            raise ValueError(f"Random coefficients must refer to utility parameters. Missing: {missing}")
+        supported_distributions = {"normal", "lognormal", "negative_lognormal"}
+        invalid_distributions = [
+            rc.distribution for rc in self.random_coefficients if rc.distribution not in supported_distributions
+        ]
+        if invalid_distributions:
+            raise ValueError(f"Unsupported random coefficient distributions: {invalid_distributions}")
 
         sigma_names = [rc.sigma_name or f"SIGMA_{rc.name}" for rc in self.random_coefficients]
         if len(set(sigma_names)) != len(sigma_names):
@@ -115,25 +133,44 @@ class MixedLogit:
         sigma_fixed = sigma_initial.clone()
         sigma_is_fixed = torch.as_tensor([rc.fixed for rc in self.random_coefficients], dtype=torch.bool, device=self.device)
         random_beta_indices = torch.as_tensor(
-            [beta_index[rc.name] for rc in self.random_coefficients],
+            [beta_index.get(rc.name, -1) for rc in self.random_coefficients],
             dtype=torch.long,
             device=self.device,
         )
+        random_fixed_indices = torch.as_tensor(
+            [fixed_beta_index.get(rc.name, -1) for rc in self.random_coefficients],
+            dtype=torch.long,
+            device=self.device,
+        )
+        random_is_fixed_beta = random_fixed_indices >= 0
         draws = self._make_draws(len(self.random_coefficients))
         free_sigma_names = [name for name, fixed in zip(sigma_names, sigma_is_fixed) if not bool(fixed)]
+        chol_offdiag_names = []
+        if self.correlated:
+            for row, row_spec in enumerate(self.random_coefficients):
+                for col in range(row):
+                    col_spec = self.random_coefficients[col]
+                    chol_offdiag_names.append(f"CHOL_{row_spec.name}__{col_spec.name}")
+        chol_offdiag_initial = torch.zeros(len(chol_offdiag_names), dtype=self.dtype, device=self.device)
 
         compiled = CompiledMixedUtility(
             design=compiled_mnl.design,
-            free_names=[*compiled_mnl.free_names, *free_sigma_names],
+            free_names=[*compiled_mnl.free_names, *free_sigma_names, *chol_offdiag_names],
             beta_names=compiled_mnl.free_names,
             sigma_names=sigma_names,
             free_initial=compiled_mnl.free_initial,
             fixed_values=compiled_mnl.fixed_values,
             fixed_design=compiled_mnl.fixed_design,
             random_beta_indices=random_beta_indices,
+            random_fixed_indices=random_fixed_indices,
+            random_is_fixed_beta=random_is_fixed_beta,
             sigma_initial=sigma_initial,
             sigma_fixed=sigma_fixed,
             sigma_is_fixed=sigma_is_fixed,
+            distributions=[rc.distribution for rc in self.random_coefficients],
+            correlated=self.correlated,
+            chol_offdiag_names=chol_offdiag_names,
+            chol_offdiag_initial=chol_offdiag_initial,
             draws=draws,
             choice_set_width=compiled_mnl.choice_set_width,
         )
@@ -150,12 +187,7 @@ class MixedLogit:
         compiled = compiled or self.compile(data)
         obs_log_prob = self._log_prob_per_obs_draw(params, data, compiled)
         if self.panel and data.obs_to_ind is not None:
-            n_individuals = int(data.obs_to_ind.max().detach().cpu()) + 1
-            panel_log_prob = torch.zeros((n_individuals, compiled.draws.shape[0]), dtype=self.dtype, device=self.device)
-            panel_log_prob.index_add_(0, data.obs_to_ind, obs_log_prob)
-            return torch.logsumexp(panel_log_prob, dim=1) - torch.log(
-                torch.as_tensor(compiled.draws.shape[0], dtype=self.dtype, device=self.device)
-            )
+            return data.panel_structure().logmeanexp_by_unit(obs_log_prob)
         return torch.logsumexp(obs_log_prob, dim=1) - torch.log(
             torch.as_tensor(compiled.draws.shape[0], dtype=self.dtype, device=self.device)
         )
@@ -178,6 +210,7 @@ class MixedLogit:
             [
                 compiled.free_initial,
                 self._sigma_to_internal(compiled.sigma_initial[~compiled.sigma_is_fixed]),
+                compiled.chol_offdiag_initial,
             ]
         )
         internal_params = internal_initial.clone().detach().requires_grad_(True)
@@ -277,13 +310,70 @@ class MixedLogit:
         return torch.stack(values).sum()
 
     def _drawn_betas(self, params: torch.Tensor, compiled: CompiledMixedUtility) -> torch.Tensor:
-        means, sigmas = self._split_natural_params(params, compiled)
+        means, sigmas, chol_offdiag = self._split_natural_params(params, compiled)
         betas = means.unsqueeze(0).expand(compiled.draws.shape[0], -1).clone()
         if compiled.random_beta_indices.numel():
-            betas[:, compiled.random_beta_indices] = (
-                means[compiled.random_beta_indices].unsqueeze(0) + compiled.draws * sigmas.unsqueeze(0)
-            )
+            cholesky = self._cholesky_factor(sigmas, chol_offdiag, compiled)
+            latent_noise = compiled.draws @ cholesky.T
+            random_means = self._random_means(means, compiled)
+            latent = random_means.unsqueeze(0) + latent_noise
+            transformed = []
+            for index, distribution in enumerate(compiled.distributions):
+                values = latent[:, index]
+                if distribution == "normal":
+                    transformed.append(values)
+                elif distribution == "lognormal":
+                    transformed.append(torch.exp(values))
+                elif distribution == "negative_lognormal":
+                    transformed.append(-torch.exp(values))
+                else:
+                    raise ValueError(f"Unsupported random coefficient distribution: {distribution}")
+            transformed_betas = torch.stack(transformed, dim=1)
+            free_mask = ~compiled.random_is_fixed_beta
+            if bool(free_mask.any()):
+                betas[:, compiled.random_beta_indices[free_mask]] = transformed_betas[:, free_mask]
         return betas
+
+    def _fixed_random_adjustment(
+        self,
+        params: torch.Tensor,
+        compiled: CompiledMixedUtility,
+    ) -> torch.Tensor | None:
+        if not bool(compiled.random_is_fixed_beta.any()):
+            return None
+        means, sigmas, chol_offdiag = self._split_natural_params(params, compiled)
+        del means
+        cholesky = self._cholesky_factor(sigmas, chol_offdiag, compiled)
+        latent_noise = compiled.draws @ cholesky.T
+        random_means = compiled.fixed_values[torch.clamp(compiled.random_fixed_indices, min=0)]
+        latent = random_means.unsqueeze(0) + latent_noise
+        transformed = []
+        for index, distribution in enumerate(compiled.distributions):
+            values = latent[:, index]
+            if distribution == "normal":
+                transformed.append(values)
+            elif distribution == "lognormal":
+                transformed.append(torch.exp(values))
+            elif distribution == "negative_lognormal":
+                transformed.append(-torch.exp(values))
+            else:
+                raise ValueError(f"Unsupported random coefficient distribution: {distribution}")
+        transformed_betas = torch.stack(transformed, dim=1)
+        fixed_mask = compiled.random_is_fixed_beta
+        fixed_indices = compiled.random_fixed_indices[fixed_mask]
+        fixed_means = compiled.fixed_values[fixed_indices]
+        return compiled.fixed_design[:, fixed_indices] @ (transformed_betas[:, fixed_mask] - fixed_means).T
+
+    def _random_means(self, means: torch.Tensor, compiled: CompiledMixedUtility) -> torch.Tensor:
+        values = []
+        for random_index in range(len(compiled.distributions)):
+            if bool(compiled.random_is_fixed_beta[random_index]):
+                values.append(compiled.fixed_values[compiled.random_fixed_indices[random_index]])
+            else:
+                values.append(means[compiled.random_beta_indices[random_index]])
+        if not values:
+            return torch.zeros(0, dtype=self.dtype, device=self.device)
+        return torch.stack(values)
 
     def _log_prob_per_obs_draw(
         self,
@@ -313,6 +403,9 @@ class MixedLogit:
         utility = compiled.design @ betas.T
         if compiled.fixed_values.numel():
             utility = utility + (compiled.fixed_design @ compiled.fixed_values).unsqueeze(1)
+        fixed_adjustment = self._fixed_random_adjustment(params, compiled)
+        if fixed_adjustment is not None:
+            utility = utility + fixed_adjustment
         width = compiled.choice_set_width
         if width is not None:
             utility_by_obs = utility.reshape(data.n_obs, width, compiled.draws.shape[0])
@@ -336,14 +429,16 @@ class MixedLogit:
         self,
         params: torch.Tensor,
         compiled: CompiledMixedUtility,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         n_beta = len(compiled.beta_names)
         means = params[:n_beta]
         sigmas = compiled.sigma_fixed.clone()
         free_count = int((~compiled.sigma_is_fixed).sum().detach().cpu())
         if free_count:
             sigmas[~compiled.sigma_is_fixed] = params[n_beta : n_beta + free_count]
-        return means, sigmas
+        start = n_beta + free_count
+        end = start + len(compiled.chol_offdiag_names)
+        return means, sigmas, params[start:end]
 
     def _internal_to_natural(self, internal: torch.Tensor, compiled: CompiledMixedUtility) -> torch.Tensor:
         n_beta = len(compiled.beta_names)
@@ -352,14 +447,37 @@ class MixedLogit:
         free_count = int((~compiled.sigma_is_fixed).sum().detach().cpu())
         if free_count:
             sigmas[~compiled.sigma_is_fixed] = self._internal_to_sigma(internal[n_beta : n_beta + free_count])
-        return torch.cat([means, sigmas[~compiled.sigma_is_fixed]])
+        offdiag_start = n_beta + free_count
+        offdiag_end = offdiag_start + len(compiled.chol_offdiag_names)
+        return torch.cat([means, sigmas[~compiled.sigma_is_fixed], internal[offdiag_start:offdiag_end]])
 
     def _natural_jacobian(self, internal: torch.Tensor, compiled: CompiledMixedUtility) -> torch.Tensor:
         diag = torch.ones_like(internal)
         n_beta = len(compiled.beta_names)
-        if internal.numel() > n_beta:
-            diag[n_beta:] = torch.exp(internal[n_beta:])
+        free_count = int((~compiled.sigma_is_fixed).sum().detach().cpu())
+        if free_count:
+            diag[n_beta : n_beta + free_count] = torch.exp(internal[n_beta : n_beta + free_count])
         return torch.diag(diag)
+
+    def _cholesky_factor(
+        self,
+        sigmas: torch.Tensor,
+        chol_offdiag: torch.Tensor,
+        compiled: CompiledMixedUtility,
+    ) -> torch.Tensor:
+        n_random = len(compiled.distributions)
+        if n_random == 0:
+            return torch.zeros((0, 0), dtype=self.dtype, device=self.device)
+        if not compiled.correlated:
+            return torch.diag(sigmas)
+        cholesky = torch.zeros((n_random, n_random), dtype=self.dtype, device=self.device)
+        cholesky[torch.arange(n_random, device=self.device), torch.arange(n_random, device=self.device)] = sigmas
+        cursor = 0
+        for row in range(1, n_random):
+            for col in range(row):
+                cholesky[row, col] = chol_offdiag[cursor]
+                cursor += 1
+        return cholesky
 
     def _sigma_to_internal(self, sigmas: torch.Tensor) -> torch.Tensor:
         if sigmas.numel() == 0:

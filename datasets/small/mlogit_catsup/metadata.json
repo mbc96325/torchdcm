@@ -1,0 +1,14 @@
+{
+  "columns": 14,
+  "dataset_id": "mlogit_catsup",
+  "dataset_name": "Catsup",
+  "license_or_terms": "CRAN package license/data terms",
+  "notes": {
+    "r_object": "Catsup",
+    "r_package": "mlogit"
+  },
+  "rows": 2798,
+  "sha256": "dd40171e983ceff6bec7fd730f51aac5908e153b0a83ed0a112452eb528542f4",
+  "source_family": "R mlogit",
+  "upstream_url": "https://cran.r-project.org/web/packages/mlogit/mlogit.pdf"
+}

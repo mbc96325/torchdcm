@@ -1,0 +1,14 @@
+{
+  "columns": 26,
+  "dataset_id": "apollo_mode_choice",
+  "dataset_name": "Mode choice",
+  "license_or_terms": "Apollo examples/data terms",
+  "notes": {
+    "r_object": "apollo_modeChoiceData",
+    "r_package": "apollo"
+  },
+  "rows": 8000,
+  "sha256": "1ca47a7bf52b1a41024e8da9eb3285b0471ff47838c71c64ac6d530960074fc5",
+  "source_family": "Apollo",
+  "upstream_url": "https://www.apollochoicemodelling.com/examples.html"
+}

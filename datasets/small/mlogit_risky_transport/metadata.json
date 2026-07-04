@@ -1,0 +1,14 @@
+{
+  "columns": 22,
+  "dataset_id": "mlogit_risky_transport",
+  "dataset_name": "RiskyTransport",
+  "license_or_terms": "CRAN package license/data terms",
+  "notes": {
+    "r_object": "RiskyTransport",
+    "r_package": "mlogit"
+  },
+  "rows": 5405,
+  "sha256": "010d7a122bcf89b3240ca2f0002c6ac4a48516251e79838e3fb5982c8ebb69e6",
+  "source_family": "R mlogit",
+  "upstream_url": "https://cran.r-project.org/web/packages/mlogit/mlogit.pdf"
+}

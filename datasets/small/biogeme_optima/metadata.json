@@ -1,0 +1,14 @@
+{
+  "columns": 150,
+  "dataset_id": "biogeme_optima",
+  "dataset_name": "Optima",
+  "license_or_terms": "Upstream Biogeme example data terms",
+  "notes": {
+    "python_package": "biogeme.data.optima",
+    "source_loader": "read_data().dataframe"
+  },
+  "rows": 1899,
+  "sha256": "82d8aef9f024dd27ef3f044f5b1d182ccbb7b1307347d978e418eb2c42731e25",
+  "source_family": "Biogeme",
+  "upstream_url": "https://biogeme.epfl.ch/sphinx/auto_examples/index.html"
+}
