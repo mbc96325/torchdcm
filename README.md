@@ -17,11 +17,11 @@
 </p>
 
 <p align="center">
-  <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue">
-  <img alt="PyTorch" src="https://img.shields.io/badge/backend-PyTorch-ee4c2c">
-  <img alt="Benchmarks" src="https://img.shields.io/badge/benchmarks-Biogeme%20%7C%20Apollo%20%7C%20mlogit-2b9348">
-  <img alt="Datasets" src="https://img.shields.io/badge/datasets-public%20choice%20data-6c63ff">
-  <img alt="Status" src="https://img.shields.io/badge/status-research%20prototype-f59f00">
+  <a href="pyproject.toml"><img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue"></a>
+  <a href="https://pytorch.org/"><img alt="PyTorch" src="https://img.shields.io/badge/backend-PyTorch-ee4c2c"></a>
+  <a href="docs/benchmarking.md"><img alt="Benchmarks" src="https://img.shields.io/badge/benchmarks-Biogeme%20%7C%20Apollo%20%7C%20mlogit-2b9348"></a>
+  <a href="datasets/README.md"><img alt="Datasets" src="https://img.shields.io/badge/datasets-public%20choice%20data-6c63ff"></a>
+  <a href="#why-torchdcm"><img alt="Status" src="https://img.shields.io/badge/status-research%20prototype-f59f00"></a>
 </p>
 
 TorchDCM is a PyTorch-first toolkit for discrete choice model estimation,
