@@ -159,16 +159,17 @@ class MultinomialLogit:
         hessian_ll = torch.autograd.functional.hessian(lambda p: self.loglike(p, data, compiled), final_params)
         information = -hessian_ll.detach()
         cov_classic = _safe_pinv(information)
-        scores = self.scores(final_params.detach(), data, compiled)
         covariances = {"classic": cov_classic}
-        meat = scores.T @ scores
-        covariances["robust"] = cov_classic @ meat @ cov_classic
-        cluster_codes = data.cluster_codes(groups)
-        if cluster_codes is not None:
-            cluster_meat = _cluster_meat(scores, cluster_codes)
-            covariances["cluster"] = cov_classic @ cluster_meat @ cov_classic
-        elif cov_type == "cluster":
-            raise ValueError("Cluster covariance requested, but no groups were supplied.")
+        if cov_type in {"robust", "cluster"}:
+            scores = self.scores(final_params.detach(), data, compiled)
+            meat = scores.T @ scores
+            covariances["robust"] = cov_classic @ meat @ cov_classic
+            cluster_codes = data.cluster_codes(groups)
+            if cluster_codes is not None:
+                cluster_meat = _cluster_meat(scores, cluster_codes)
+                covariances["cluster"] = cov_classic @ cluster_meat @ cov_classic
+            elif cov_type == "cluster":
+                raise ValueError("Cluster covariance requested, but no groups were supplied.")
 
         null_ll = self.null_loglike(data)
         return ChoiceResults(
@@ -260,4 +261,3 @@ def _cluster_meat(scores: torch.Tensor, cluster_codes: torch.Tensor) -> torch.Te
         accum.append(scores[cluster_codes == code].sum(dim=0))
     cluster_scores = torch.stack(accum)
     return cluster_scores.T @ cluster_scores
-
