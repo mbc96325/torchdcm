@@ -1,9 +1,0 @@
-dataset_id,release_status,processed_artifact,google_drive_url,source_url,notes
-"lpmc_london","processed_locally_not_uploaded","datasets/large/releases/lpmc_london.zip","TODO","https://transp-or.epfl.ch/data/lpmc.dat",""
-"nhts_2017","processed_pending","datasets/large/releases/nhts_2017.zip","TODO","https://nhts.ornl.gov/","Large public survey. Download deferred until benchmark preprocessing protocol is fixed."
-"nhts_2022","processed_pending","datasets/large/releases/nhts_2022.zip","TODO","https://nhts.ornl.gov/","Large public survey. Download deferred until benchmark preprocessing protocol is fixed."
-"uk_national_travel_survey","processed_pending","datasets/large/releases/uk_national_travel_survey.zip","TODO","https://www.gov.uk/government/collections/national-travel-survey-statistics","Large public survey. Download deferred until benchmark preprocessing protocol is fixed."
-"psrc_household_travel_survey","processed_pending","datasets/large/releases/psrc_household_travel_survey.zip","TODO","https://www.psrc.org/our-work/household-travel-survey-program","Large public survey. Download deferred until benchmark preprocessing protocol is fixed."
-"mtsa_us_metro_archive","processed_pending","datasets/large/releases/mtsa_us_metro_archive.zip","TODO","https://www.nrel.gov/transportation/secure-transportation-data/tsdc-metropolitan-travel-survey-archive","Large public survey. Download deferred until benchmark preprocessing protocol is fixed."
-"germany_mid","processed_pending","datasets/large/releases/germany_mid.zip","TODO","https://www.mobilitaet-in-deutschland.de/","Large public survey. Download deferred until benchmark preprocessing protocol is fixed."
-"covid_future_panel_survey","processed_pending","datasets/large/releases/covid_future_panel_survey.zip","TODO","https://arxiv.org/abs/2208.12618","Large public survey. Download deferred until benchmark preprocessing protocol is fixed."
