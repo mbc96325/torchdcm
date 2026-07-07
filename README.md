@@ -65,6 +65,8 @@ pytest
 ## Quick Start
 
 ```python
+import torch
+
 from torchdcm import Beta, ChoiceDataset, MultinomialLogit, UtilitySpec
 from torchdcm.datasets import make_swissmetro_like
 
@@ -104,9 +106,15 @@ spec.utility(
     + Beta("B_COST", init=-0.1) * "cost",
 )
 
-result = MultinomialLogit(spec).fit(data, cov_type="cluster", groups="person_id")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+result = MultinomialLogit(spec, device=device).fit(data, cov_type="cluster", groups="person_id")
 print(result.summary())
 ```
+
+All estimators accept a standard PyTorch-style `device` argument. Passing
+`device="cuda"` moves estimation, prediction, simulated likelihoods, and
+covariance calculations for that model to CUDA when your PyTorch installation
+has GPU support.
 
 ## Model Zoo
 
@@ -144,4 +152,3 @@ Benchmark and manuscript work should happen in the companion repository:
 ```bash
 git clone https://github.com/mbc96325/torchdcm-paper.git
 ```
-
