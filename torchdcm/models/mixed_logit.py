@@ -310,29 +310,38 @@ class MixedLogit:
         return torch.stack(values).sum()
 
     def _drawn_betas(self, params: torch.Tensor, compiled: CompiledMixedUtility) -> torch.Tensor:
-        means, sigmas, chol_offdiag = self._split_natural_params(params, compiled)
+        means, transformed_betas = self._drawn_random_betas(params, compiled)
         betas = means.unsqueeze(0).expand(compiled.draws.shape[0], -1).clone()
-        if compiled.random_beta_indices.numel():
-            cholesky = self._cholesky_factor(sigmas, chol_offdiag, compiled)
-            latent_noise = compiled.draws @ cholesky.T
-            random_means = self._random_means(means, compiled)
-            latent = random_means.unsqueeze(0) + latent_noise
-            transformed = []
-            for index, distribution in enumerate(compiled.distributions):
-                values = latent[:, index]
-                if distribution == "normal":
-                    transformed.append(values)
-                elif distribution == "lognormal":
-                    transformed.append(torch.exp(values))
-                elif distribution == "negative_lognormal":
-                    transformed.append(-torch.exp(values))
-                else:
-                    raise ValueError(f"Unsupported random coefficient distribution: {distribution}")
-            transformed_betas = torch.stack(transformed, dim=1)
+        if transformed_betas.numel():
             free_mask = ~compiled.random_is_fixed_beta
             if bool(free_mask.any()):
                 betas[:, compiled.random_beta_indices[free_mask]] = transformed_betas[:, free_mask]
         return betas
+
+    def _drawn_random_betas(
+        self,
+        params: torch.Tensor,
+        compiled: CompiledMixedUtility,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        means, sigmas, chol_offdiag = self._split_natural_params(params, compiled)
+        if not compiled.random_beta_indices.numel():
+            return means, torch.empty((compiled.draws.shape[0], 0), dtype=self.dtype, device=self.device)
+        cholesky = self._cholesky_factor(sigmas, chol_offdiag, compiled)
+        latent_noise = compiled.draws @ cholesky.T
+        random_means = self._random_means(means, compiled)
+        latent = random_means.unsqueeze(0) + latent_noise
+        transformed = []
+        for index, distribution in enumerate(compiled.distributions):
+            values = latent[:, index]
+            if distribution == "normal":
+                transformed.append(values)
+            elif distribution == "lognormal":
+                transformed.append(torch.exp(values))
+            elif distribution == "negative_lognormal":
+                transformed.append(-torch.exp(values))
+            else:
+                raise ValueError(f"Unsupported random coefficient distribution: {distribution}")
+        return means, torch.stack(transformed, dim=1)
 
     def _fixed_random_adjustment(
         self,
@@ -381,17 +390,27 @@ class MixedLogit:
         data: ChoiceDataset,
         compiled: CompiledMixedUtility,
     ) -> torch.Tensor:
-        probabilities = self._prob_per_obs_alt_draw(params, data, compiled)
+        utility = self._utility_per_row_draw(params, compiled)
         width = compiled.choice_set_width
         if width is None:
             rows = []
             for obs in range(data.n_obs):
                 chosen = int(data.chosen_row[obs])
-                rows.append(torch.log(torch.clamp(probabilities[chosen], min=torch.finfo(self.dtype).tiny)))
+                start = int(data.obs_ptr[obs])
+                end = int(data.obs_ptr[obs + 1])
+                mask = data.availability[start:end].unsqueeze(1)
+                seg = utility[start:end]
+                log_denom = torch.logsumexp(seg.masked_fill(~mask, -torch.inf), dim=0)
+                rows.append(seg[chosen - start] - log_denom)
             return torch.stack(rows) * data.weights.unsqueeze(1)
+        utility_by_obs = utility.reshape(data.n_obs, width, compiled.draws.shape[0])
+        availability = data.availability.reshape(data.n_obs, width).unsqueeze(2)
+        if not bool(availability.any(dim=1).all()):
+            raise ValueError("Every observation must have at least one available alternative.")
         chosen_local = (data.chosen_row - data.obs_ptr[:-1]).reshape(-1, 1, 1)
-        chosen_prob = probabilities.gather(1, chosen_local.expand(-1, 1, probabilities.shape[2])).squeeze(1)
-        return torch.log(torch.clamp(chosen_prob, min=torch.finfo(self.dtype).tiny)) * data.weights.unsqueeze(1)
+        chosen_utility = utility_by_obs.gather(1, chosen_local.expand(-1, 1, utility_by_obs.shape[2])).squeeze(1)
+        log_denom = torch.logsumexp(utility_by_obs.masked_fill(~availability, -torch.inf), dim=1)
+        return (chosen_utility - log_denom) * data.weights.unsqueeze(1)
 
     def _prob_per_obs_alt_draw(
         self,
@@ -399,13 +418,7 @@ class MixedLogit:
         data: ChoiceDataset,
         compiled: CompiledMixedUtility,
     ) -> torch.Tensor:
-        betas = self._drawn_betas(params, compiled)
-        utility = compiled.design @ betas.T
-        if compiled.fixed_values.numel():
-            utility = utility + (compiled.fixed_design @ compiled.fixed_values).unsqueeze(1)
-        fixed_adjustment = self._fixed_random_adjustment(params, compiled)
-        if fixed_adjustment is not None:
-            utility = utility + fixed_adjustment
+        utility = self._utility_per_row_draw(params, compiled)
         width = compiled.choice_set_width
         if width is not None:
             utility_by_obs = utility.reshape(data.n_obs, width, compiled.draws.shape[0])
@@ -424,6 +437,47 @@ class MixedLogit:
             probs = torch.softmax(seg.masked_fill(~mask, -torch.inf), dim=0).masked_fill(~mask, 0.0)
             rows.append(probs)
         return torch.cat(rows, dim=0)
+
+    def _utility_per_row_draw(
+        self,
+        params: torch.Tensor,
+        compiled: CompiledMixedUtility,
+    ) -> torch.Tensor:
+        n_random = compiled.random_beta_indices.numel()
+        n_beta = compiled.design.shape[1]
+        if n_random >= n_beta or (n_random == 1 and n_beta <= 8):
+            return self._utility_per_row_draw_full(params, compiled)
+        means, transformed_betas = self._drawn_random_betas(params, compiled)
+        utility = (compiled.design @ means).unsqueeze(1)
+        if compiled.fixed_values.numel():
+            utility = utility + (compiled.fixed_design @ compiled.fixed_values).unsqueeze(1)
+        if transformed_betas.numel():
+            free_mask = ~compiled.random_is_fixed_beta
+            if bool(free_mask.any()):
+                free_indices = compiled.random_beta_indices[free_mask]
+                free_delta = transformed_betas[:, free_mask] - means[free_indices].unsqueeze(0)
+                utility = utility + compiled.design[:, free_indices] @ free_delta.T
+            fixed_mask = compiled.random_is_fixed_beta
+            if bool(fixed_mask.any()):
+                fixed_indices = compiled.random_fixed_indices[fixed_mask]
+                fixed_means = compiled.fixed_values[fixed_indices]
+                fixed_delta = transformed_betas[:, fixed_mask] - fixed_means.unsqueeze(0)
+                utility = utility + compiled.fixed_design[:, fixed_indices] @ fixed_delta.T
+        return utility
+
+    def _utility_per_row_draw_full(
+        self,
+        params: torch.Tensor,
+        compiled: CompiledMixedUtility,
+    ) -> torch.Tensor:
+        betas = self._drawn_betas(params, compiled)
+        utility = compiled.design @ betas.T
+        if compiled.fixed_values.numel():
+            utility = utility + (compiled.fixed_design @ compiled.fixed_values).unsqueeze(1)
+        fixed_adjustment = self._fixed_random_adjustment(params, compiled)
+        if fixed_adjustment is not None:
+            utility = utility + fixed_adjustment
+        return utility
 
     def _split_natural_params(
         self,
