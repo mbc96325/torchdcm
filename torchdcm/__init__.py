@@ -14,8 +14,11 @@ from torchdcm.models.nested_logit import Nest, NestedLogit
 from torchdcm.models.ordered import OrderedLogit, OrderedProbit
 from torchdcm.models.scaled_mnl import AlternativeScale, ScaledMultinomialLogit
 from torchdcm.models.wtp_mixed_logit import WTPCoefficient, WTPMixedLogit
+from torchdcm.results.report import EstimationReport
 from torchdcm.spec.parameters import Beta
 from torchdcm.spec.utility import UtilitySpec
+
+__version__ = "0.1.0"
 
 __all__ = [
     "Beta",
@@ -29,6 +32,7 @@ __all__ = [
     "CrossNestedLogit",
     "ErrorComponent",
     "ErrorComponentsLogit",
+    "EstimationReport",
     "HybridChoiceModel",
     "LatentClassLogit",
     "LatentVariable",

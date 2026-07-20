@@ -1,7 +1,7 @@
 # TorchDCM
 
 <p align="center">
-  <img src="docs/assets/torchdcm-logo.png" alt="TorchDCM logo" width="86%">
+  <img src="https://raw.githubusercontent.com/mbc96325/torchdcm/main/docs/assets/torchdcm-logo.png" alt="TorchDCM logo" width="86%">
 </p>
 
 <p align="center">
@@ -17,7 +17,8 @@
 </p>
 
 <p align="center">
-  <a href="pyproject.toml"><img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue"></a>
+  <a href="https://pypi.org/project/torchdcm/"><img alt="PyPI" src="https://img.shields.io/pypi/v/torchdcm"></a>
+  <a href="https://github.com/mbc96325/torchdcm/blob/main/pyproject.toml"><img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue"></a>
   <a href="https://pytorch.org/"><img alt="PyTorch" src="https://img.shields.io/badge/backend-PyTorch-ee4c2c"></a>
   <a href="#model-zoo"><img alt="Models" src="https://img.shields.io/badge/models-MNL%20%7C%20NL%20%7C%20Mixed%20Logit%20%7C%20Hybrid-2b9348"></a>
   <a href="https://github.com/mbc96325/torchdcm-paper"><img alt="Benchmarks" src="https://img.shields.io/badge/benchmarks-Biogeme%20%7C%20Apollo%20%7C%20mlogit%20%7C%20xlogit-6c63ff"></a>
@@ -49,7 +50,7 @@ validation wrappers, plots, comparison tables, generated results, and LaTeX:
 ## Installation
 
 ```bash
-python -m pip install git+https://github.com/mbc96325/torchdcm.git
+python -m pip install torchdcm
 ```
 
 For local development:
@@ -110,6 +111,25 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 result = MultinomialLogit(spec, device=device).fit(data, cov_type="cluster", groups="person_id")
 print(result.summary())
 ```
+
+`summary()` renders an organized console report covering the model and data,
+convergence diagnostics, fit statistics, inference, alternative shares, and
+parameter estimates. The same structured report can be inspected as tables or
+saved as a reproducible artifact directory:
+
+```python
+report = result.report(cov_type="cluster", confidence_level=0.95)
+parameter_table = report.parameters
+
+result.save_report(
+    "outputs/swissmetro_mnl",
+    formats=["html", "json", "csv", "latex", "text"],
+)
+```
+
+The output directory contains a readable HTML report, a machine-readable JSON
+record, parameter/covariance/correlation CSV files, a LaTeX fragment, and a
+plain-text summary.
 
 All estimators accept a standard PyTorch-style `device` argument. Passing
 `device="cuda"` moves estimation, prediction, simulated likelihoods, and

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Literal
 
 import numpy as np
@@ -137,9 +138,13 @@ class MultinomialLogit:
         groups=None,
         max_iter: int | None = None,
     ) -> ChoiceResults:
+        fit_started = perf_counter()
+        compile_started = perf_counter()
         data = data.to(device=self.device, dtype=self.dtype)
         compiled = self.compile(data)
+        compile_seconds = perf_counter() - compile_started
         params = compiled.free_initial.clone().detach().requires_grad_(True)
+        initial_loglike = float(self.loglike(params.detach(), data, compiled).detach().cpu())
         optimizer = torch.optim.LBFGS(
             [params],
             max_iter=max_iter or self.max_iter,
@@ -155,7 +160,10 @@ class MultinomialLogit:
             iterations["count"] += 1
             return loss
 
+        optimization_started = perf_counter()
         optimizer.step(closure)
+        optimization_seconds = perf_counter() - optimization_started
+        inference_started = perf_counter()
         final_params = params.detach().clone()
         final_params.requires_grad_(True)
         ll = self.loglike(final_params, data, compiled)
@@ -164,18 +172,22 @@ class MultinomialLogit:
         information = -hessian_ll.detach()
         cov_classic = _safe_pinv(information)
         covariances = {"classic": cov_classic}
+        n_clusters = None
         if cov_type in {"robust", "cluster"}:
             scores = self.scores(final_params.detach(), data, compiled)
             meat = scores.T @ scores
             covariances["robust"] = cov_classic @ meat @ cov_classic
             cluster_codes = data.cluster_codes(groups)
             if cluster_codes is not None:
+                n_clusters = int(torch.unique(cluster_codes).numel())
                 cluster_meat = _cluster_meat(scores, cluster_codes)
                 covariances["cluster"] = cov_classic @ cluster_meat @ cov_classic
             elif cov_type == "cluster":
                 raise ValueError("Cluster covariance requested, but no groups were supplied.")
 
         null_ll = self.null_loglike(data)
+        inference_seconds = perf_counter() - inference_started
+        total_seconds = perf_counter() - fit_started
         return ChoiceResults(
             model=self,
             data=data,
@@ -193,6 +205,12 @@ class MultinomialLogit:
                 "optimizer": "torch.optim.LBFGS",
                 "closure_evaluations": iterations["count"],
                 "gradient_norm": float(torch.linalg.vector_norm(grad).detach().cpu()),
+                "initial_loglike": initial_loglike,
+                "n_clusters": n_clusters,
+                "compile_seconds": compile_seconds,
+                "optimization_seconds": optimization_seconds,
+                "inference_seconds": inference_seconds,
+                "total_seconds": total_seconds,
             },
         )
 

@@ -130,6 +130,28 @@ def test_mixed_logit_correlated_random_coefficients():
     assert torch.isfinite(model.loglike(params, data, compiled))
 
 
+def test_mixed_logit_decomposed_utility_matches_full_product_when_all_betas_random():
+    data = swissmetro_panel_data(6)
+    spec = UtilitySpec()
+    spec.utility("TRAIN", Beta("B_TIME", init=-0.01) * "time" + Beta("B_COST", init=-0.1) * "cost")
+    spec.utility("SM", Beta("B_TIME", init=-0.01) * "time" + Beta("B_COST", init=-0.1) * "cost")
+    spec.utility("CAR", Beta("B_TIME", init=-0.01) * "time" + Beta("B_COST", init=-0.1) * "cost")
+    draws = torch.tensor([[-1.0, -0.5], [0.0, 0.25], [1.0, 0.75]], dtype=torch.float64)
+    model = MixedLogit(
+        spec,
+        [RandomCoefficient("B_TIME", sigma_init=0.2), RandomCoefficient("B_COST", sigma_init=0.3)],
+        draws=draws,
+    )
+    compiled = model.compile(data)
+    params = torch.cat([compiled.free_initial, torch.tensor([0.2, 0.3], dtype=torch.float64)])
+
+    decomposed = model._utility_per_row_draw(params, compiled)
+    full_product = compiled.design @ model._drawn_betas(params, compiled).T
+
+    assert compiled.random_beta_indices.numel() == compiled.design.shape[1]
+    assert torch.allclose(decomposed, full_product)
+
+
 def test_mixed_logit_fixed_beta_random_component():
     data = swissmetro_panel_data(6)
     loading = torch.isin(data.alt_id, torch.tensor([0, 1], dtype=torch.long)).to(dtype=torch.float64)

@@ -2,9 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import erfc, sqrt
+from pathlib import Path
+from statistics import NormalDist
+from typing import Iterable
 
 import numpy as np
+import pandas as pd
 import torch
+
+from torchdcm.results.report import EstimationReport
 
 
 @dataclass
@@ -34,11 +40,17 @@ class ChoiceResults:
 
     @property
     def tvalues(self) -> np.ndarray:
+        """Backward-compatible alias for asymptotic z statistics."""
+
+        return self.zvalues
+
+    @property
+    def zvalues(self) -> np.ndarray:
         return self.values / self.bse
 
     @property
     def pvalues(self) -> np.ndarray:
-        return np.asarray([erfc(abs(float(z)) / sqrt(2.0)) for z in self.tvalues])
+        return np.asarray([erfc(abs(float(z)) / sqrt(2.0)) for z in self.zvalues])
 
     @property
     def aic(self) -> float:
@@ -76,29 +88,63 @@ class ChoiceResults:
         return clone
 
     def conf_int(self, alpha: float = 0.05) -> np.ndarray:
-        if alpha != 0.05:
-            raise NotImplementedError("Only 95% intervals are currently implemented without scipy.")
-        z = 1.959963984540054
+        if not 0.0 < alpha < 1.0:
+            raise ValueError("alpha must lie strictly between zero and one.")
+        z = NormalDist().inv_cdf(1.0 - alpha / 2.0)
         return np.column_stack([self.values - z * self.bse, self.values + z * self.bse])
 
-    def summary(self) -> str:
-        ci = self.conf_int()
-        model_name = self.model.__class__.__name__
-        lines = [
-            f"TorchDCM {model_name} Results",
-            f"N obs: {self.n_obs}    log likelihood: {self.loglike:.6f}    null LL: {self.null_loglike:.6f}",
-            f"rho2: {self.rho2:.6f}    rho2_bar: {self.rho2_bar:.6f}    AIC: {self.aic:.3f}    BIC: {self.bic:.3f}",
-            f"covariance: {self.cov_type}    gradient norm: {self.convergence_status['gradient_norm']:.3e}",
-            "",
-            f"{'parameter':<18}{'estimate':>14}{'std err':>14}{'z':>12}{'p>|z|':>12}{'[0.025':>14}{'0.975]':>14}",
-        ]
-        for i, name in enumerate(self.param_names):
-            lines.append(
-                f"{name:<18}{self.values[i]:>14.6g}{self.bse[i]:>14.6g}"
-                f"{self.tvalues[i]:>12.4g}{self.pvalues[i]:>12.4g}"
-                f"{ci[i, 0]:>14.6g}{ci[i, 1]:>14.6g}"
-            )
-        return "\n".join(lines)
+    def report(
+        self,
+        *,
+        cov_type: str | None = None,
+        confidence_level: float = 0.95,
+        title: str | None = None,
+    ) -> EstimationReport:
+        """Build a structured, single-model estimation report."""
+
+        return EstimationReport.from_results(
+            self,
+            cov_type=cov_type,
+            confidence_level=confidence_level,
+            title=title,
+        )
+
+    def summary(
+        self,
+        *,
+        cov_type: str | None = None,
+        confidence_level: float = 0.95,
+    ) -> str:
+        """Render the organized estimation report as console text."""
+
+        return self.report(cov_type=cov_type, confidence_level=confidence_level).to_text()
+
+    def parameter_table(
+        self,
+        *,
+        cov_type: str | None = None,
+        confidence_level: float = 0.95,
+    ) -> pd.DataFrame:
+        """Return the report's parameter table as a pandas DataFrame."""
+
+        return self.report(cov_type=cov_type, confidence_level=confidence_level).parameters.copy()
+
+    def save_report(
+        self,
+        directory: str | Path,
+        *,
+        formats: Iterable[str] = ("html", "json", "csv", "latex", "text"),
+        cov_type: str | None = None,
+        confidence_level: float = 0.95,
+        title: str | None = None,
+    ) -> dict[str, list[Path]]:
+        """Write a self-contained report artifact directory."""
+
+        return self.report(
+            cov_type=cov_type,
+            confidence_level=confidence_level,
+            title=title,
+        ).save(directory, formats=formats)
 
     def predict_proba(self, data=None) -> np.ndarray:
         data = data or self.data

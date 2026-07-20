@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Literal
 
 import torch
@@ -204,14 +205,20 @@ class MixedLogit:
     ) -> ChoiceResults:
         if cov_type != "classic":
             raise NotImplementedError("MixedLogit currently supports classic covariance only.")
+        fit_started = perf_counter()
+        compile_started = perf_counter()
         data = data.to(device=self.device, dtype=self.dtype)
         compiled = self.compile(data)
+        compile_seconds = perf_counter() - compile_started
         internal_initial = torch.cat(
             [
                 compiled.free_initial,
                 self._sigma_to_internal(compiled.sigma_initial[~compiled.sigma_is_fixed]),
                 compiled.chol_offdiag_initial,
             ]
+        )
+        initial_loglike = float(
+            self.loglike(self._internal_to_natural(internal_initial, compiled), data, compiled).detach().cpu()
         )
         internal_params = internal_initial.clone().detach().requires_grad_(True)
         optimizer = torch.optim.LBFGS(
@@ -230,7 +237,10 @@ class MixedLogit:
             iterations["count"] += 1
             return loss
 
+        optimization_started = perf_counter()
         optimizer.step(closure)
+        optimization_seconds = perf_counter() - optimization_started
+        inference_started = perf_counter()
         final_internal = internal_params.detach().clone()
         final_internal.requires_grad_(True)
         final_natural = self._internal_to_natural(final_internal, compiled)
@@ -247,6 +257,8 @@ class MixedLogit:
         cov_classic = transform_jac @ cov_internal @ transform_jac.T
         hessian_natural = torch.autograd.functional.hessian(lambda p: self.loglike(p, data, compiled), final_natural.detach())
         information = -hessian_natural.detach()
+        inference_seconds = perf_counter() - inference_started
+        total_seconds = perf_counter() - fit_started
         return ChoiceResults(
             model=self,
             data=data,
@@ -266,6 +278,11 @@ class MixedLogit:
                 "gradient_norm": float(torch.linalg.vector_norm(gradient).detach().cpu()),
                 "n_draws": compiled.draws.shape[0],
                 "panel": self.panel and data.obs_to_ind is not None,
+                "initial_loglike": initial_loglike,
+                "compile_seconds": compile_seconds,
+                "optimization_seconds": optimization_seconds,
+                "inference_seconds": inference_seconds,
+                "total_seconds": total_seconds,
             },
         )
 
@@ -343,36 +360,6 @@ class MixedLogit:
                 raise ValueError(f"Unsupported random coefficient distribution: {distribution}")
         return means, torch.stack(transformed, dim=1)
 
-    def _fixed_random_adjustment(
-        self,
-        params: torch.Tensor,
-        compiled: CompiledMixedUtility,
-    ) -> torch.Tensor | None:
-        if not bool(compiled.random_is_fixed_beta.any()):
-            return None
-        means, sigmas, chol_offdiag = self._split_natural_params(params, compiled)
-        del means
-        cholesky = self._cholesky_factor(sigmas, chol_offdiag, compiled)
-        latent_noise = compiled.draws @ cholesky.T
-        random_means = compiled.fixed_values[torch.clamp(compiled.random_fixed_indices, min=0)]
-        latent = random_means.unsqueeze(0) + latent_noise
-        transformed = []
-        for index, distribution in enumerate(compiled.distributions):
-            values = latent[:, index]
-            if distribution == "normal":
-                transformed.append(values)
-            elif distribution == "lognormal":
-                transformed.append(torch.exp(values))
-            elif distribution == "negative_lognormal":
-                transformed.append(-torch.exp(values))
-            else:
-                raise ValueError(f"Unsupported random coefficient distribution: {distribution}")
-        transformed_betas = torch.stack(transformed, dim=1)
-        fixed_mask = compiled.random_is_fixed_beta
-        fixed_indices = compiled.random_fixed_indices[fixed_mask]
-        fixed_means = compiled.fixed_values[fixed_indices]
-        return compiled.fixed_design[:, fixed_indices] @ (transformed_betas[:, fixed_mask] - fixed_means).T
-
     def _random_means(self, means: torch.Tensor, compiled: CompiledMixedUtility) -> torch.Tensor:
         values = []
         for random_index in range(len(compiled.distributions)):
@@ -443,10 +430,6 @@ class MixedLogit:
         params: torch.Tensor,
         compiled: CompiledMixedUtility,
     ) -> torch.Tensor:
-        n_random = compiled.random_beta_indices.numel()
-        n_beta = compiled.design.shape[1]
-        if n_random >= n_beta or (n_random == 1 and n_beta <= 8):
-            return self._utility_per_row_draw_full(params, compiled)
         means, transformed_betas = self._drawn_random_betas(params, compiled)
         utility = (compiled.design @ means).unsqueeze(1)
         if compiled.fixed_values.numel():
@@ -463,20 +446,6 @@ class MixedLogit:
                 fixed_means = compiled.fixed_values[fixed_indices]
                 fixed_delta = transformed_betas[:, fixed_mask] - fixed_means.unsqueeze(0)
                 utility = utility + compiled.fixed_design[:, fixed_indices] @ fixed_delta.T
-        return utility
-
-    def _utility_per_row_draw_full(
-        self,
-        params: torch.Tensor,
-        compiled: CompiledMixedUtility,
-    ) -> torch.Tensor:
-        betas = self._drawn_betas(params, compiled)
-        utility = compiled.design @ betas.T
-        if compiled.fixed_values.numel():
-            utility = utility + (compiled.fixed_design @ compiled.fixed_values).unsqueeze(1)
-        fixed_adjustment = self._fixed_random_adjustment(params, compiled)
-        if fixed_adjustment is not None:
-            utility = utility + fixed_adjustment
         return utility
 
     def _split_natural_params(
