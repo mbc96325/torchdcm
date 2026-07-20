@@ -1,7 +1,7 @@
 # TorchDCM
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/mbc96325/torchdcm/main/docs/assets/torchdcm-logo.png" alt="TorchDCM logo" width="86%">
+  <img src="https://raw.githubusercontent.com/mbc96325/torchdcm-paper/main/docs/assets/torchdcm-logo.png" alt="TorchDCM logo" width="86%">
 </p>
 
 <p align="center">
@@ -12,16 +12,16 @@
   <a href="#quick-start">Quick Start</a> |
   <a href="#model-zoo">Model Zoo</a> |
   <a href="#installation">Installation</a> |
-  <a href="https://github.com/mbc96325/torchdcm-paper">Benchmarks</a> |
+  <a href="#benchmarks-and-validation">Benchmarks</a> |
   <a href="#development">Development</a>
 </p>
 
 <p align="center">
   <a href="https://pypi.org/project/torchdcm/"><img alt="PyPI" src="https://img.shields.io/pypi/v/torchdcm"></a>
-  <a href="https://github.com/mbc96325/torchdcm/blob/main/pyproject.toml"><img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue"></a>
+  <a href="https://pypi.org/project/torchdcm/"><img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue"></a>
   <a href="https://pytorch.org/"><img alt="PyTorch" src="https://img.shields.io/badge/backend-PyTorch-ee4c2c"></a>
   <a href="#model-zoo"><img alt="Models" src="https://img.shields.io/badge/models-MNL%20%7C%20NL%20%7C%20Mixed%20Logit%20%7C%20Hybrid-2b9348"></a>
-  <a href="https://github.com/mbc96325/torchdcm-paper"><img alt="Benchmarks" src="https://img.shields.io/badge/benchmarks-Biogeme%20%7C%20Apollo%20%7C%20mlogit%20%7C%20xlogit-6c63ff"></a>
+  <a href="https://github.com/mbc96325/torchdcm-paper/blob/main/validation/README.md"><img alt="Benchmarks" src="https://img.shields.io/badge/benchmarks-Biogeme%20%7C%20Apollo%20%7C%20mlogit%20%7C%20xlogit-6c63ff"></a>
   <a href="#development"><img alt="Status" src="https://img.shields.io/badge/status-research%20prototype-f59f00"></a>
 </p>
 
@@ -34,7 +34,7 @@ The software-paper repository is separate and contains public benchmark data,
 validation wrappers, plots, comparison tables, generated results, and LaTeX:
 
 <p align="center">
-  <a href="https://github.com/mbc96325/torchdcm-paper"><b>torchdcm-paper: validation, benchmarks, datasets, and manuscript</b></a>
+  <a href="https://github.com/mbc96325/torchdcm-paper/tree/main/validation"><b>torchdcm-paper: validation, benchmarks, datasets, and manuscript</b></a>
 </p>
 
 ## Why TorchDCM
@@ -149,6 +149,28 @@ The current package includes:
 - hybrid choice with latent variables and Gaussian measurement indicators;
 - classic, robust, and cluster covariance estimates;
 - WTP and elasticity helpers.
+
+## Benchmarks and Validation
+
+The public
+[`torchdcm-paper`](https://github.com/mbc96325/torchdcm-paper) repository
+contains the validation system used to generate the software-paper results.
+Each row below links the executable runner to its committed output rather than
+to a separate illustrative example.
+
+| Benchmark | Scope | Runner | Published output |
+| --- | --- | --- | --- |
+| Controlled synthetic data | MNL, NL, and MixL sweeps over sample size, alternatives, coefficients, correlation, and stress cases | [`compare_generated_choice_battery.py`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/benchmarks/compare_generated_choice_battery.py) | [MNL](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/generated/generated_choice_battery_controlled_office.md), [NL](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/generated/generated_choice_battery_table4_nl_office.md), [MixL](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/generated/generated_choice_battery_table4_mixl_office.md) |
+| Real-data MNL | TorchDCM, SciPy, Biogeme, Apollo, `mlogit`, `gmnl`, and `xlogit` | [`run_solver_attempt_matrix.py`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/benchmarks/run_solver_attempt_matrix.py) | [`solver_attempt_matrix_mnl_single_core_office.md`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/generated/solver_attempt_matrix_mnl_single_core_office.md) |
+| Real-data NL | TorchDCM, Biogeme, and Apollo | [`compare_real_nested_logit_battery.py`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/benchmarks/compare_real_nested_logit_battery.py) | [`nested_real_battery_single_core_office.md`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/generated/nested_real_battery_single_core_office.md) |
+| Real-data MixL | TorchDCM, Biogeme, and Apollo with aligned model specifications | [`compare_real_mixed_logit_battery.py`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/benchmarks/compare_real_mixed_logit_battery.py) | [`mixed_real_battery_apollo_office.md`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/generated/mixed_real_battery_apollo_office.md) |
+| CPU--GPU scaling | MNL, NL, and MixL device comparisons | [`compare_torch_device_stress.py`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/benchmarks/compare_torch_device_stress.py) | [`torch_device_stress_battery.md`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/generated/torch_device_stress_battery.md) |
+| Ordered responses | Ordered logit and ordered probit parity with Biogeme | [`compare_ordered_estimators.py`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/benchmarks/compare_ordered_estimators.py) | [Ordered logit](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/generated/ordered_logit_single_core_office.json), [ordered probit](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/generated/ordered_probit_single_core_office.json) |
+
+See the [validation guide](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/README.md),
+[dataset catalog](https://github.com/mbc96325/torchdcm-paper/blob/main/datasets/dataset_index.csv),
+and [manuscript](https://github.com/mbc96325/torchdcm-paper/blob/main/paper/main.pdf)
+for the complete reproducibility workflow.
 
 ## Repository Layout
 
