@@ -7,6 +7,10 @@ from typing import Literal
 import torch
 
 from torchdcm.data.choice_dataset import ChoiceDataset
+from torchdcm.models._optimization import (
+    TrackedLBFGS,
+    lbfgs_convergence_status,
+)
 from torchdcm.results.result import ChoiceResults
 from torchdcm.spec.utility import UtilitySpec
 
@@ -271,7 +275,7 @@ class NestedLogit:
             self.loglike(self._internal_to_natural(internal_initial, compiled), data, compiled).detach().cpu()
         )
         internal_params = internal_initial.clone().detach().requires_grad_(True)
-        optimizer = torch.optim.LBFGS(
+        optimizer = TrackedLBFGS(
             [internal_params],
             max_iter=max_iter or self.max_iter,
             tolerance_grad=self.tolerance_grad,
@@ -295,6 +299,14 @@ class NestedLogit:
         final_internal.requires_grad_(True)
         final_natural = self._internal_to_natural(final_internal, compiled)
         ll = self.loglike(final_natural, data, compiled)
+        internal_gradient = torch.autograd.grad(ll, final_internal)[0].detach()
+        convergence_status = lbfgs_convergence_status(
+            optimizer,
+            internal_gradient,
+            final_loss=-ll,
+            n_obs=data.n_obs,
+            closure_evaluations=iterations["count"],
+        )
         natural_for_grad = final_natural.detach().clone().requires_grad_(True)
         gradient = torch.autograd.grad(self.loglike(natural_for_grad, data, compiled), natural_for_grad)[0].detach()
         hessian_internal = torch.autograd.functional.hessian(
@@ -337,9 +349,7 @@ class NestedLogit:
             n_obs=data.n_obs,
             n_params=len(compiled.free_names),
             convergence_status={
-                "optimizer": "torch.optim.LBFGS",
-                "closure_evaluations": iterations["count"],
-                "gradient_norm": float(torch.linalg.vector_norm(gradient).detach().cpu()),
+                **convergence_status,
                 "initial_loglike": initial_loglike,
                 "n_clusters": n_clusters,
                 "compile_seconds": compile_seconds,

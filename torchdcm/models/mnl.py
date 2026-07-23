@@ -8,6 +8,10 @@ import numpy as np
 import torch
 
 from torchdcm.data.choice_dataset import ChoiceDataset
+from torchdcm.models._optimization import (
+    TrackedLBFGS,
+    lbfgs_convergence_status,
+)
 from torchdcm.results.result import ChoiceResults
 from torchdcm.spec.utility import UtilitySpec
 
@@ -145,7 +149,7 @@ class MultinomialLogit:
         compile_seconds = perf_counter() - compile_started
         params = compiled.free_initial.clone().detach().requires_grad_(True)
         initial_loglike = float(self.loglike(params.detach(), data, compiled).detach().cpu())
-        optimizer = torch.optim.LBFGS(
+        optimizer = TrackedLBFGS(
             [params],
             max_iter=max_iter or self.max_iter,
             tolerance_grad=self.tolerance_grad,
@@ -168,6 +172,13 @@ class MultinomialLogit:
         final_params.requires_grad_(True)
         ll = self.loglike(final_params, data, compiled)
         grad = torch.autograd.grad(ll, final_params, create_graph=False)[0].detach()
+        convergence_status = lbfgs_convergence_status(
+            optimizer,
+            grad,
+            final_loss=-ll,
+            n_obs=data.n_obs,
+            closure_evaluations=iterations["count"],
+        )
         hessian_ll = torch.autograd.functional.hessian(lambda p: self.loglike(p, data, compiled), final_params)
         information = -hessian_ll.detach()
         cov_classic = _safe_pinv(information)
@@ -202,9 +213,7 @@ class MultinomialLogit:
             n_obs=data.n_obs,
             n_params=len(compiled.free_names),
             convergence_status={
-                "optimizer": "torch.optim.LBFGS",
-                "closure_evaluations": iterations["count"],
-                "gradient_norm": float(torch.linalg.vector_norm(grad).detach().cpu()),
+                **convergence_status,
                 "initial_loglike": initial_loglike,
                 "n_clusters": n_clusters,
                 "compile_seconds": compile_seconds,

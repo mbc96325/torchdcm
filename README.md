@@ -130,7 +130,11 @@ result.save_report(
 
 The output directory contains a readable HTML report, a machine-readable JSON
 record, parameter/covariance/correlation CSV files, a LaTeX fragment, and a
-plain-text summary.
+plain-text summary. The convergence section records the exact L-BFGS stopping
+condition, the internal-parameter gradient infinity norm, and that norm divided
+by the number of observations. Function- or step-tolerance stops are reported
+as converged when the normalized gradient does not exceed `1e-5`; iteration
+limits, non-finite values, and larger normalized gradients remain warnings.
 
 All estimators accept a standard PyTorch-style `device` argument. Passing
 `device="cuda"` moves estimation, prediction, simulated likelihoods, and
@@ -142,9 +146,11 @@ has GPU support.
 The [`examples/`](examples) directory contains self-contained Jupyter
 notebooks for every public model family. Each notebook presents the model's
 mathematical formulation, builds a nontrivial specification, runs full
-estimation on the Office validation machine, and retains its rendered HTML
-report. The examples automatically select CUDA when it is available and can be
-changed to CPU by setting `device = "cpu"`.
+estimation, and retains its rendered HTML report. They were executed on an AMD
+Ryzen 9 9950X3D CPU (16 cores), 64 GB RAM, and an NVIDIA GeForce RTX 5090 GPU
+(32 GB VRAM), running Ubuntu 24.04.4 with PyTorch 2.12.1 and CUDA 13.0. The
+examples automatically select CUDA when it is available and can be changed to
+CPU by setting `device = "cpu"`.
 
 | Model | Executed notebook |
 | --- | --- |

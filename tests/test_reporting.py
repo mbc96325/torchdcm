@@ -60,6 +60,13 @@ def test_structured_report_and_all_exports(tmp_path):
     assert "B_TIME" in text
     assert report.sections["Data summary"]["Alternative rows"] == data.n_rows
     assert report.sections["Data summary"]["Choice-set structure"] == "Balanced"
+    convergence = report.sections["Estimation and convergence"]
+    assert convergence["Termination reason"].startswith(
+        ("Converged", "Stopped")
+    )
+    assert np.isfinite(convergence["Internal gradient infinity norm"])
+    assert np.isfinite(convergence["Normalized gradient infinity norm"])
+    assert convergence["Normalized gradient warning threshold"] == 1e-5
     assert set(report.alternatives["Alternative"]) == {"TRAIN", "SM", "CAR"}
     assert result.parameter_table().loc[result.parameter_table()["Parameter"] == "ASC_CAR", "Status"].item() == "Fixed"
 

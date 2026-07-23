@@ -508,14 +508,20 @@ def _model_specification(model: object) -> OrderedDict[str, Any]:
 def _estimation_section(results: object, warnings: list[str]) -> OrderedDict[str, Any]:
     status = results.convergence_status
     gradient_norm = status.get("gradient_norm")
-    tolerance = getattr(results.model, "tolerance_grad", None)
+    normalized_gradient = status.get("normalized_gradient_norm")
+    normalized_tolerance = status.get("normalized_gradient_tolerance")
+    tolerance = status.get(
+        "gradient_tolerance",
+        getattr(results.model, "tolerance_grad", None),
+    )
     explicit_success = status.get("success")
     success = explicit_success
     message = status.get("message")
     if success is None and gradient_norm is not None and tolerance is not None:
-        success = bool(isfinite(float(gradient_norm)) and float(gradient_norm) <= float(tolerance))
-        message = "Gradient tolerance satisfied" if success else "Gradient tolerance not satisfied"
-    if success is False:
+        message = message or "Completed (optimizer status unavailable)"
+    optimizer_warnings = list(status.get("warnings", []))
+    warnings.extend(optimizer_warnings)
+    if success is False and not optimizer_warnings:
         warnings.append(message or "The optimizer did not report successful convergence.")
     if success is True:
         status_label = "Converged"
@@ -541,9 +547,14 @@ def _estimation_section(results: object, warnings: list[str]) -> OrderedDict[str
         [
             ("Status", status_label),
             ("Termination reason", message),
+            ("Optimizer iterations", status.get("optimizer_iterations")),
             ("Closure evaluations", status.get("closure_evaluations")),
-            ("Gradient norm", gradient_norm),
+            ("Function evaluations", status.get("function_evaluations")),
+            ("Internal gradient infinity norm", gradient_norm),
+            ("Normalized gradient infinity norm", normalized_gradient),
+            ("Normalized gradient warning threshold", normalized_tolerance),
             ("Gradient tolerance", tolerance),
+            ("Function/step tolerance", status.get("function_step_tolerance")),
             ("Information-matrix rank", rank),
             ("Information-matrix dimension", information.shape[0] if information.ndim == 2 else None),
             ("Positive definite", positive_definite),

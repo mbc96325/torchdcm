@@ -6,6 +6,10 @@ from typing import Literal
 import torch
 
 from torchdcm.data.choice_dataset import ChoiceDataset
+from torchdcm.models._optimization import (
+    TrackedLBFGS,
+    lbfgs_convergence_status,
+)
 from torchdcm.results.result import ChoiceResults
 from torchdcm.spec.utility import UtilitySpec
 
@@ -296,11 +300,12 @@ class CrossNestedLogit:
                 starts.append(candidate)
 
         best_internal = None
+        best_convergence_status = None
         best_ll = torch.as_tensor(-torch.inf, dtype=self.dtype, device=self.device)
         total_closures = 0
         for start in starts:
             internal_params = start.clone().detach().requires_grad_(True)
-            optimizer = torch.optim.LBFGS(
+            optimizer = TrackedLBFGS(
                 [internal_params],
                 max_iter=max_iter or self.max_iter,
                 tolerance_grad=self.tolerance_grad,
@@ -318,13 +323,30 @@ class CrossNestedLogit:
 
             optimizer.step(closure)
             total_closures += iterations["count"]
-            candidate_internal = internal_params.detach().clone()
-            candidate_ll = self.loglike(self._internal_to_natural(candidate_internal, compiled), data, compiled).detach()
-            if bool(candidate_ll > best_ll):
-                best_ll = candidate_ll
-                best_internal = candidate_internal
+            candidate_internal = internal_params.detach().clone().requires_grad_(True)
+            candidate_natural = self._internal_to_natural(
+                candidate_internal,
+                compiled,
+            )
+            candidate_ll = self.loglike(candidate_natural, data, compiled)
+            candidate_gradient = torch.autograd.grad(
+                candidate_ll,
+                candidate_internal,
+            )[0].detach()
+            candidate_status = lbfgs_convergence_status(
+                optimizer,
+                candidate_gradient,
+                final_loss=-candidate_ll,
+                n_obs=data.n_obs,
+                closure_evaluations=iterations["count"],
+            )
+            if bool(candidate_ll.detach() > best_ll):
+                best_ll = candidate_ll.detach()
+                best_internal = candidate_internal.detach()
+                best_convergence_status = candidate_status
 
         assert best_internal is not None
+        assert best_convergence_status is not None
         final_internal = best_internal.clone().detach().requires_grad_(True)
         final_natural = self._internal_to_natural(final_internal, compiled)
         ll = self.loglike(final_natural, data, compiled)
@@ -354,9 +376,8 @@ class CrossNestedLogit:
             n_obs=data.n_obs,
             n_params=len(compiled.free_names),
             convergence_status={
-                "optimizer": "torch.optim.LBFGS",
+                **best_convergence_status,
                 "closure_evaluations": total_closures,
-                "gradient_norm": float(torch.linalg.vector_norm(gradient).detach().cpu()),
                 "n_starts": len(starts),
             },
         )

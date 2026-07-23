@@ -6,6 +6,10 @@ from typing import Literal
 import torch
 
 from torchdcm.data.choice_dataset import ChoiceDataset
+from torchdcm.models._optimization import (
+    TrackedLBFGS,
+    lbfgs_convergence_status,
+)
 from torchdcm.models.mnl import MultinomialLogit
 from torchdcm.results.result import ChoiceResults
 from torchdcm.spec.expressions import Expression, Term
@@ -247,7 +251,7 @@ class CovariateScaledMultinomialLogit:
         data = data.to(device=self.device, dtype=self.dtype)
         compiled = self.compile(data)
         params = compiled.free_initial.clone().detach().requires_grad_(True)
-        optimizer = torch.optim.LBFGS(
+        optimizer = TrackedLBFGS(
             [params],
             max_iter=max_iter or self.max_iter,
             tolerance_grad=self.tolerance_grad,
@@ -266,6 +270,13 @@ class CovariateScaledMultinomialLogit:
         final_params = params.detach().clone().requires_grad_(True)
         ll = self.loglike(final_params, data, compiled)
         gradient = torch.autograd.grad(ll, final_params)[0].detach()
+        convergence_status = lbfgs_convergence_status(
+            optimizer,
+            gradient,
+            final_loss=-ll,
+            n_obs=data.n_obs,
+            closure_evaluations=iterations["count"],
+        )
         hessian_ll = torch.autograd.functional.hessian(lambda p: self.loglike(p, data, compiled), final_params)
         information = -hessian_ll.detach()
         cov_classic = _safe_pinv(information)
@@ -282,11 +293,7 @@ class CovariateScaledMultinomialLogit:
             cov_type="classic",
             n_obs=data.n_obs,
             n_params=len(compiled.free_names),
-            convergence_status={
-                "optimizer": "torch.optim.LBFGS",
-                "closure_evaluations": iterations["count"],
-                "gradient_norm": float(torch.linalg.vector_norm(gradient).detach().cpu()),
-            },
+            convergence_status=convergence_status,
         )
 
     def predict_proba(
