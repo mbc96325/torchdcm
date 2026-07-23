@@ -96,7 +96,7 @@ def _parameter_group(name: str, model: object) -> str:
     return "Utility coefficients"
 
 
-def _reference_value(name: str) -> float:
+def _null_value(name: str) -> float:
     return 1.0 if name.upper().startswith("LAMBDA_") else 0.0
 
 
@@ -626,10 +626,10 @@ def _parameter_table(results: object, cov_type: str, confidence_level: float) ->
     critical = NormalDist().inv_cdf(0.5 + confidence_level / 2.0)
     rows: list[dict[str, Any]] = []
     for index, name in enumerate(results.param_names):
-        reference = _reference_value(name)
+        null_value = _null_value(name)
         standard_error = float(standard_errors[index])
         estimate = float(estimates[index])
-        z_value = (estimate - reference) / standard_error if standard_error > 0 else np.nan
+        z_value = (estimate - null_value) / standard_error if standard_error > 0 else np.nan
         p_value = erfc(abs(z_value) / sqrt(2.0)) if isfinite(z_value) else np.nan
         rows.append(
             {
@@ -638,9 +638,9 @@ def _parameter_table(results: object, cov_type: str, confidence_level: float) ->
                 "Start": initial_values.get(name, np.nan),
                 "Estimate": estimate,
                 "Std. error": standard_error,
-                "Reference": reference,
                 "z-value": z_value,
                 "p-value": p_value,
+                "H₀ value": null_value,
                 "CI lower": estimate - critical * standard_error,
                 "CI upper": estimate + critical * standard_error,
                 "Status": "Estimated",
@@ -665,9 +665,9 @@ def _fixed_parameter_rows(model: object) -> list[dict[str, Any]]:
                 "Start": float(value),
                 "Estimate": float(value),
                 "Std. error": np.nan,
-                "Reference": _reference_value(name),
                 "z-value": np.nan,
                 "p-value": np.nan,
+                "H₀ value": _null_value(name),
                 "CI lower": np.nan,
                 "CI upper": np.nan,
                 "Status": "Fixed",
@@ -783,9 +783,9 @@ def _parameter_text(parameters: pd.DataFrame, confidence_level: float) -> list[s
                 "Start",
                 "Estimate",
                 "Std. error",
-                "Reference",
                 "z-value",
                 "p-value",
+                "H₀ value",
             ]
         ].copy()
         display[interval_label] = [

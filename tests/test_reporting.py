@@ -81,7 +81,7 @@ def test_structured_report_and_all_exports(tmp_path):
     assert "<h2>Model fit</h2>" in (output / "report.html").read_text(encoding="utf-8")
 
 
-def test_nested_report_uses_one_as_lambda_reference():
+def test_nested_report_uses_one_as_lambda_h0_value():
     data = report_data(36)
     nests = {
         "PUBLIC": Nest(["TRAIN", "SM"], init=0.8),
@@ -93,7 +93,7 @@ def test_nested_report_uses_one_as_lambda_reference():
     assert report.sections["Model specification"]["Nests"]["PUBLIC"] == ["TRAIN", "SM"]
     lambda_row = report.parameters.loc[report.parameters["Parameter"] == "LAMBDA_PUBLIC"].iloc[0]
     assert lambda_row["Group"] == "Nest parameters"
-    assert lambda_row["Reference"] == 1.0
+    assert lambda_row["H₀ value"] == 1.0
     fixed_row = report.parameters.loc[report.parameters["Parameter"] == "LAMBDA_PRIVATE"].iloc[0]
     assert fixed_row["Status"] == "Fixed"
 
