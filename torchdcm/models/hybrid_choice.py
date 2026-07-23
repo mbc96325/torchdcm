@@ -156,6 +156,8 @@ class HybridChoiceModel:
         if cache_key in self._compiled_cache:
             return self._compiled_cache[cache_key]
 
+        # Compile the observed utility block with MNL, then register structural,
+        # latent-effect, and measurement parameters in one shared ordering.
         deterministic = MultinomialLogit(self.spec, dtype=self.dtype, device=self.device).compile(data)
         alt_to_code = {name: i for i, name in enumerate(data.alt_names)}
         latent_index = {lv.name: i for i, lv in enumerate(self.latent_variables)}
@@ -183,6 +185,8 @@ class HybridChoiceModel:
             for coefficient in coefficients.values():
                 registry.register(coefficient)
             registry.register(sigma)
+            # Store scalar specifications instead of resolved values so fixed
+            # and estimated terms can share the same downstream equations.
             compiled_lvs.append(
                 _CompiledLatentVariable(
                     name=lv.name,
@@ -273,6 +277,8 @@ class HybridChoiceModel:
         mean_by_obs = torch.stack(means, dim=1)
         sigma = torch.stack(sigmas).reshape(1, 1, -1)
         if self.panel and data.obs_to_ind is not None:
+            # One latent realization is shared across every observation from an
+            # individual.  The unit-level draw is expanded back to observations.
             unit_mean = _first_obs_by_unit(mean_by_obs, data)
             unit_values = unit_mean.unsqueeze(1) + compiled.draws.unsqueeze(0) * sigma
             return unit_values[data.obs_to_ind]
@@ -291,6 +297,8 @@ class HybridChoiceModel:
         utility = compiled.deterministic_design @ deterministic
         if compiled.deterministic_fixed_values.numel():
             utility = utility + compiled.deterministic_fixed_design @ compiled.deterministic_fixed_values
+        # Shape after expansion is (long rows, draws).  Latent effects are then
+        # added only to rows for their specified alternatives.
         utility = utility.unsqueeze(1).expand(data.n_rows, compiled.draws.shape[0]).clone()
         if compiled.choice_effects:
             latent = self.latent_values_by_obs_draw(params, data, compiled)
@@ -320,6 +328,8 @@ class HybridChoiceModel:
             sigma = torch.clamp(self._scalar_value(indicator.sigma, params, compiled), min=self.sigma_min)
             residual = (observed - intercept - loading * latent[:, :, indicator.latent_index]) / sigma
             contribution = -0.5 * log_two_pi - torch.log(sigma) - 0.5 * residual.square()
+            # Missing indicators contribute zero log density, allowing partial
+            # measurement records without dropping the choice observation.
             log_density = log_density + torch.where(torch.isfinite(observed), contribution, torch.zeros_like(contribution))
         return log_density
 
@@ -484,6 +494,8 @@ class HybridChoiceModel:
             chosen_local = (data.chosen_row - data.obs_ptr[:-1]).reshape(-1, 1, 1)
             chosen_prob = probabilities.gather(1, chosen_local.expand(-1, 1, probabilities.shape[2])).squeeze(1)
             choice_log = torch.log(torch.clamp(chosen_prob, min=torch.finfo(self.dtype).tiny))
+        # Conditional independence makes the joint log likelihood the sum of
+        # choice and measurement contributions for each latent draw.
         return data.weights.unsqueeze(1) * (choice_log + self.measurement_log_density_by_obs_draw(params, data, compiled))
 
     def _prob_per_obs_alt_draw(
@@ -516,6 +528,8 @@ class HybridChoiceModel:
     ) -> torch.Tensor:
         measurement = data.weights.unsqueeze(1) * self.measurement_log_density_by_obs_draw(params, data, compiled)
         if self.panel and data.obs_to_ind is not None:
+            # Conditioning on indicators converts their log densities into
+            # posterior integration weights shared within each panel.
             unit_log = data.panel_structure().sum_by_unit(measurement)
             return torch.softmax(unit_log, dim=1)[data.obs_to_ind]
         return torch.softmax(measurement, dim=1)
@@ -528,6 +542,8 @@ class HybridChoiceModel:
     def _initial_internal(self, compiled: CompiledHybridChoice) -> torch.Tensor:
         initial = compiled.free_initial.clone()
         if bool(compiled.positive_free.any()):
+            # Measurement and structural standard deviations are optimized in
+            # log distance from ``sigma_min`` to enforce positivity.
             initial[compiled.positive_free] = self._sigma_to_internal(initial[compiled.positive_free])
         return initial
 
@@ -558,6 +574,8 @@ class HybridChoiceModel:
         generator = torch.Generator(device="cpu")
         generator.manual_seed(self.seed)
         if self.antithetic:
+            # Reusing paired draws keeps the simulated objective deterministic
+            # and reduces odd-moment simulation noise.
             half = (self.n_draws + 1) // 2
             base = torch.randn((half, n_latent), generator=generator, dtype=self.dtype)
             draws = torch.cat([base, -base], dim=0)[: self.n_draws]
@@ -575,6 +593,8 @@ class _ParamRegistry:
             return
         old = self._seen.get(spec.name)
         if old is not None:
+            # A shared name denotes one shared parameter, so conflicting
+            # declarations must fail before optimization.
             if old.fixed != spec.fixed or old.positive != spec.positive or abs(old.init - spec.init) > 1e-12:
                 raise ValueError(f"Conflicting definitions for parameter {spec.name!r}.")
             return

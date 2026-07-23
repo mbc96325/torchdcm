@@ -97,6 +97,8 @@ class NestedLogit:
 
         nest_names = list(self.nests)
         nest_by_alt: dict[str, int] = {}
+        # NL requires a partition: each alternative belongs to exactly one
+        # nest.  Cross-membership is handled by CrossNestedLogit instead.
         for nest_index, (nest_name, nest) in enumerate(self.nests.items()):
             for alt in nest.alternatives:
                 if alt not in alt_to_code:
@@ -135,6 +137,8 @@ class NestedLogit:
             dtype=torch.long,
             device=self.device,
         )
+        # Expand alternative-level nest membership to long rows once so the
+        # optimizer never performs string or dictionary lookups.
         nest_id = nest_id_by_alt[data.alt_id]
         lambda_initial = []
         lambda_fixed = []
@@ -189,6 +193,8 @@ class NestedLogit:
         utility = self.utilities(beta, data, compiled)
         width = compiled.choice_set_width
         if width is not None:
+            # Balanced data use tensors with shape (observations, alternatives);
+            # nests are reduced in parallel on the same device.
             utility_by_obs = utility.reshape(data.n_obs, width)
             availability = data.availability.reshape(data.n_obs, width)
             nest_by_obs = compiled.nest_id.reshape(data.n_obs, width)
@@ -201,6 +207,7 @@ class NestedLogit:
                 lam = lambdas[nest_index]
                 mask = availability & (nest_by_obs == nest_index)
                 scaled = (utility_by_obs / lam).masked_fill(~mask, -torch.inf)
+                # The inclusive value is a stable log-sum-exp within one nest.
                 iv = torch.logsumexp(scaled, dim=1)
                 has_nest = mask.any(dim=1)
                 iv_columns.append(iv)
@@ -271,6 +278,8 @@ class NestedLogit:
                 self._lambda_to_internal(compiled.lambda_initial[~compiled.lambda_is_fixed]),
             ]
         )
+        # A shifted logistic transform keeps every free dissimilarity in
+        # (lambda_min, 1) throughout optimization.
         initial_loglike = float(
             self.loglike(self._internal_to_natural(internal_initial, compiled), data, compiled).detach().cpu()
         )
@@ -314,6 +323,8 @@ class NestedLogit:
             final_internal,
         )
         cov_internal = _safe_pinv(-hessian_internal.detach())
+        # Transform uncertainty from unrestricted coordinates to the reported
+        # beta/lambda scale.
         transform_jac = self._natural_jacobian(final_internal.detach(), compiled)
         cov_classic = transform_jac @ cov_internal @ transform_jac.T
         hessian_natural = torch.autograd.functional.hessian(lambda p: self.loglike(p, data, compiled), final_natural.detach())

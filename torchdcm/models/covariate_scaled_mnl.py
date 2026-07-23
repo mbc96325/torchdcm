@@ -99,6 +99,8 @@ class CovariateScaledMultinomialLogit:
 
         mnl = MultinomialLogit(self.spec, dtype=self.dtype, device=self.device)
         compiled_mnl = mnl.compile(data)
+        # Scale equations have their own parameter block because utility and
+        # scale coefficients play different econometric roles.
         scale_exprs = [scale.log_scale for scale in self.scales.values() if scale.log_scale is not None]
         scale_params = _collect_unique_parameters(expr.parameters for expr in scale_exprs)
         scale_free = [p for p in scale_params if not p.fixed]
@@ -119,6 +121,8 @@ class CovariateScaledMultinomialLogit:
         for alt_name, scale in self.scales.items():
             rows = data.alt_id == alt_to_code[alt_name]
             if scale.value is not None:
+                # Fixed scales are stored as log-scales so all rows share the
+                # same final exponential mapping.
                 fixed_log_scale_by_row[rows] = torch.log(
                     torch.as_tensor(float(scale.value), dtype=self.dtype, device=self.device)
                 )
@@ -187,6 +191,7 @@ class CovariateScaledMultinomialLogit:
             log_scale = log_scale + compiled.scale_design @ scale_params
         if compiled.scale_fixed_values.numel():
             log_scale = log_scale + compiled.scale_fixed_design @ compiled.scale_fixed_values
+        # Exponentiation guarantees a positive row-specific utility scale.
         return torch.exp(log_scale)
 
     def scaled_utilities(

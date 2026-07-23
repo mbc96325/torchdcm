@@ -47,6 +47,8 @@ class UtilitySpec:
         """Create a specification from simple linear utility formulas."""
 
         fixed = fixed or set()
+        # All alternatives share this registry, so writing ``B_TIME * time`` in
+        # several formulas creates one generic coefficient rather than copies.
         registry: dict[str, Beta] = {}
 
         def beta(name: str) -> Beta:
@@ -55,6 +57,8 @@ class UtilitySpec:
             return registry[name]
 
         def parse_node(node: ast.AST) -> Expression:
+            # Deliberately accept only a small linear grammar.  Rejecting calls
+            # and arbitrary Python expressions keeps formula parsing auditable.
             if isinstance(node, ast.Expression):
                 return parse_node(node.body)
             if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
@@ -81,4 +85,3 @@ class UtilitySpec:
         for alt, formula in utilities.items():
             spec.utility(alt, parse_node(ast.parse(formula, mode="eval")))
         return spec
-

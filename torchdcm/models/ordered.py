@@ -92,6 +92,8 @@ class _BaseOrderedModel:
                 threshold_values.append(float(threshold))
                 threshold_names.append(f"TH_{index + 1}")
         if any(b <= a for a, b in zip(threshold_values, threshold_values[1:])):
+            # Ordered probabilities are valid only for strictly increasing cut
+            # points; the internal transform preserves this ordering thereafter.
             raise ValueError("Initial thresholds must be strictly increasing.")
 
         compiled = CompiledOrderedUtility(
@@ -137,6 +139,8 @@ class _BaseOrderedModel:
         params = params.to(device=self.device, dtype=self.dtype)
         beta, thresholds = self._split_natural_params(params, compiled)
         eta = self.latent_value(beta, data, compiled)
+        # Add the fixed -infinity and +infinity boundaries through CDF values
+        # 0 and 1, then difference adjacent cumulative probabilities.
         cdf_values = [torch.zeros_like(eta)]
         for threshold in thresholds:
             cdf_values.append(self._cdf(threshold - eta))
@@ -261,6 +265,7 @@ class _BaseOrderedModel:
     def _threshold_to_internal(self, thresholds: torch.Tensor) -> torch.Tensor:
         if thresholds.numel() == 1:
             return thresholds
+        # The first threshold is unrestricted; later coordinates are log gaps.
         return torch.cat([thresholds[:1], torch.log(torch.clamp(thresholds[1:] - thresholds[:-1], min=1e-12))])
 
     def _internal_to_natural(self, internal: torch.Tensor, compiled: CompiledOrderedUtility) -> torch.Tensor:
@@ -270,6 +275,7 @@ class _BaseOrderedModel:
         if threshold_internal.numel() == 1:
             thresholds = threshold_internal
         else:
+            # Positive exponentiated gaps guarantee tau_1 < ... < tau_Q.
             thresholds = torch.cat(
                 [
                     threshold_internal[:1],

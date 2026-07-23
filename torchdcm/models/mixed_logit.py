@@ -114,6 +114,8 @@ class MixedLogit:
         if cache_key in self._compiled_cache:
             return self._compiled_cache[cache_key]
 
+        # Reuse the deterministic MNL compiler so utility parameter ordering,
+        # fixed coefficients, and balanced-choice detection stay identical.
         mnl = MultinomialLogit(self.spec, dtype=self.dtype, device=self.device)
         compiled_mnl = mnl.compile(data)
         beta_index = {name: i for i, name in enumerate(compiled_mnl.free_names)}
@@ -148,6 +150,8 @@ class MixedLogit:
             device=self.device,
         )
         random_is_fixed_beta = random_fixed_indices >= 0
+        # Draws are generated at compile time and reused by every likelihood
+        # evaluation.  This makes the simulated objective deterministic.
         draws = self._make_draws(len(self.random_coefficients))
         free_sigma_names = [name for name, fixed in zip(sigma_names, sigma_is_fixed) if not bool(fixed)]
         chol_offdiag_names = []
@@ -192,6 +196,8 @@ class MixedLogit:
         compiled = compiled or self.compile(data)
         obs_log_prob = self._log_prob_per_obs_draw(params, data, compiled)
         if self.panel and data.obs_to_ind is not None:
+            # PanelStructure multiplies repeated conditional probabilities in
+            # log space before averaging over the shared taste draw.
             return data.panel_structure().logmeanexp_by_unit(obs_log_prob)
         return torch.logsumexp(obs_log_prob, dim=1) - torch.log(
             torch.as_tensor(compiled.draws.shape[0], dtype=self.dtype, device=self.device)
@@ -221,6 +227,8 @@ class MixedLogit:
                 compiled.chol_offdiag_initial,
             ]
         )
+        # Optimization occurs on an unrestricted internal scale.  Positive
+        # standard deviations are mapped back before evaluating the likelihood.
         initial_loglike = float(
             self.loglike(self._internal_to_natural(internal_initial, compiled), data, compiled).detach().cpu()
         )
@@ -265,6 +273,8 @@ class MixedLogit:
         )
         information_internal = -hessian_internal.detach()
         cov_internal = _safe_pinv(information_internal)
+        # Delta-method transformation reports covariance on the natural scale
+        # seen by users rather than on the optimizer's log-sigma scale.
         transform_jac = self._natural_jacobian(final_internal.detach(), compiled)
         cov_classic = transform_jac @ cov_internal @ transform_jac.T
         hessian_natural = torch.autograd.functional.hessian(lambda p: self.loglike(p, data, compiled), final_natural.detach())
@@ -354,6 +364,8 @@ class MixedLogit:
         if not compiled.random_beta_indices.numel():
             return means, torch.empty((compiled.draws.shape[0], 0), dtype=self.dtype, device=self.device)
         cholesky = self._cholesky_factor(sigmas, chol_offdiag, compiled)
+        # Matrix multiplication creates all correlated latent-normal shocks as
+        # an (n_draws, n_random) block.
         latent_noise = compiled.draws @ cholesky.T
         random_means = self._random_means(means, compiled)
         latent = random_means.unsqueeze(0) + latent_noise
@@ -441,6 +453,8 @@ class MixedLogit:
         compiled: CompiledMixedUtility,
     ) -> torch.Tensor:
         means, transformed_betas = self._drawn_random_betas(params, compiled)
+        # Evaluate the contribution shared by all draws once.  Only columns
+        # attached to random coefficients receive a draw-specific update.
         utility = (compiled.design @ means).unsqueeze(1)
         if compiled.fixed_values.numel():
             utility = utility + (compiled.fixed_design @ compiled.fixed_values).unsqueeze(1)
@@ -449,6 +463,8 @@ class MixedLogit:
             if bool(free_mask.any()):
                 free_indices = compiled.random_beta_indices[free_mask]
                 free_delta = transformed_betas[:, free_mask] - means[free_indices].unsqueeze(0)
+                # Shape: (long rows, random coefficients) @
+                # (random coefficients, draws) -> (long rows, draws).
                 utility = utility + compiled.design[:, free_indices] @ free_delta.T
             fixed_mask = compiled.random_is_fixed_beta
             if bool(fixed_mask.any()):
@@ -503,6 +519,8 @@ class MixedLogit:
             return torch.zeros((0, 0), dtype=self.dtype, device=self.device)
         if not compiled.correlated:
             return torch.diag(sigmas)
+        # Free off-diagonal entries parameterize a lower-triangular factor, so
+        # L @ L.T is positive semidefinite by construction.
         cholesky = torch.zeros((n_random, n_random), dtype=self.dtype, device=self.device)
         cholesky[torch.arange(n_random, device=self.device), torch.arange(n_random, device=self.device)] = sigmas
         cursor = 0
@@ -531,6 +549,8 @@ class MixedLogit:
         generator = torch.Generator(device="cpu")
         generator.manual_seed(self.seed)
         if self.antithetic:
+            # Pair z with -z to reduce simulation noise without changing the
+            # requested number or dimensionality of draws.
             half = (self.n_draws + 1) // 2
             base = torch.randn((half, n_random), generator=generator, dtype=self.dtype)
             draws = torch.cat([base, -base], dim=0)[: self.n_draws]

@@ -109,6 +109,8 @@ class LatentClassLogit:
             device=self.device,
         )
 
+        # The leading class dimension lets all class-specific utilities share
+        # one tensor evaluation even when coefficients differ by class.
         for class_index, spec in enumerate(self.class_specs):
             for alt_name, expr in spec.utilities.items():
                 rows = data.alt_id == alt_to_code[alt_name]
@@ -137,6 +139,8 @@ class LatentClassLogit:
             dtype=self.dtype,
             device=self.device,
         )
+        # Membership covariates are read once from the first long row of each
+        # observation and should therefore be constant across its alternatives.
         obs_rows = data.obs_ptr[:-1]
         for class_index, expr in enumerate(self.class_membership):
             for term in expr.terms:
@@ -194,6 +198,8 @@ class LatentClassLogit:
             dtype=self.dtype,
             device=self.device,
         )
+        # Class 1 is the reference with a zero membership index.  Free logits
+        # are estimated only for the remaining classes.
         free_count = len(compiled.membership_free_names)
         if free_count:
             membership_params = params[n_utility : n_utility + free_count].to(device=self.device, dtype=self.dtype)
@@ -264,6 +270,7 @@ class LatentClassLogit:
         params = params.to(device=self.device, dtype=self.dtype)
         class_log_probs = torch.log_softmax(self.class_logits(params, compiled), dim=0)
         obs_class_log_probs = self._class_log_prob_per_obs(params, data, compiled)
+        # Marginalize the unobserved class in log space for numerical stability.
         return data.weights * torch.logsumexp(class_log_probs + obs_class_log_probs, dim=0)
 
     def loglike(

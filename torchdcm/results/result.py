@@ -80,6 +80,8 @@ class ChoiceResults:
             scores = self.model.scores(self.params, self.data)
             h_inv = self.covariances["classic"]
             meat = torch.zeros_like(h_inv)
+            # Aggregate observation scores before the outer product so
+            # arbitrary within-cluster dependence is allowed.
             for code in range(int(cluster_codes.max().detach().cpu()) + 1):
                 s = scores[cluster_codes == code].sum(dim=0)
                 meat = meat + torch.outer(s, s)
@@ -166,6 +168,7 @@ class ChoiceResults:
         beta = self.params.detach()
         estimate = -beta[idx_attr] / beta[idx_cost]
         grad = torch.zeros_like(beta)
+        # Analytic gradient of -beta_attribute / beta_cost for the delta method.
         grad[idx_attr] = -1.0 / beta[idx_cost]
         grad[idx_cost] = beta[idx_attr] / (beta[idx_cost] ** 2)
         var = grad @ self.cov_params() @ grad

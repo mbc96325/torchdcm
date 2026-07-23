@@ -73,6 +73,8 @@ class MultinomialLogit:
         design = torch.zeros((data.n_rows, len(free_params)), dtype=self.dtype, device=self.device)
         fixed_design = torch.zeros((data.n_rows, len(fixed_params)), dtype=self.dtype, device=self.device)
 
+        # Compilation turns named utility terms into dense row-by-parameter
+        # tensors once.  Optimizer iterations then require only matrix products.
         for alt_name, expr in self.spec.utilities.items():
             rows = data.alt_id == alt_to_code[alt_name]
             for term in expr.terms:
@@ -83,6 +85,8 @@ class MultinomialLogit:
                 )
                 contribution = term.multiplier * values
                 if term.parameter.fixed:
+                    # Fixed terms are kept outside the differentiable parameter
+                    # vector but still evaluated through the same utility path.
                     fixed_design[rows, fixed_index[term.parameter.name]] += contribution[rows]
                 else:
                     design[rows, free_index[term.parameter.name]] += contribution[rows]
@@ -120,6 +124,8 @@ class MultinomialLogit:
         utility = self.utilities(params, data, compiled)
         width = compiled.choice_set_width
         if width is not None:
+            # Balanced data can be reshaped to (observations, alternatives) and
+            # evaluated by one vectorized log-sum-exp call.
             utility_by_obs = utility.reshape(data.n_obs, width)
             availability = data.availability.reshape(data.n_obs, width)
             if not bool(availability.any(dim=1).all()):
@@ -129,6 +135,8 @@ class MultinomialLogit:
             log_denom = torch.logsumexp(utility_by_obs.masked_fill(~availability, -torch.inf), dim=1)
             return data.weights * (chosen_utility - log_denom)
 
+        # Ragged data remain in row-pointer form; segmented reductions avoid
+        # padding every observation to the largest choice set.
         return _ragged_loglike_per_obs(utility, data, compiled.row_to_obs)
 
     def loglike(self, params: torch.Tensor, data: ChoiceDataset, compiled: CompiledUtility | None = None) -> torch.Tensor:
@@ -181,11 +189,15 @@ class MultinomialLogit:
         )
         hessian_ll = torch.autograd.functional.hessian(lambda p: self.loglike(p, data, compiled), final_params)
         information = -hessian_ll.detach()
+        # The pseudoinverse remains defined for weakly identified or redundant
+        # specifications and is reported with rank diagnostics downstream.
         cov_classic = _safe_pinv(information)
         covariances = {"classic": cov_classic}
         n_clusters = None
         if cov_type in {"robust", "cluster"}:
             scores = self.scores(final_params.detach(), data, compiled)
+            # Observation scores form the sandwich "meat"; clustering first
+            # sums scores within each group before taking outer products.
             meat = scores.T @ scores
             covariances["robust"] = cov_classic @ meat @ cov_classic
             cluster_codes = data.cluster_codes(groups)
@@ -238,6 +250,8 @@ class MultinomialLogit:
             chosen_local = (data.chosen_row - data.obs_ptr[:-1]).reshape(-1, 1, 1)
             chosen_design = design.gather(1, chosen_local.expand(-1, 1, design.shape[-1])).squeeze(1)
             expected_design = (probabilities.unsqueeze(-1) * design).sum(dim=1)
+            # For MNL the score is observed minus probability-weighted expected
+            # design, so no per-observation autograd loop is needed.
             return data.weights.unsqueeze(1) * (chosen_design - expected_design)
 
         rows = []
@@ -318,6 +332,8 @@ def _row_to_obs(data: ChoiceDataset) -> torch.Tensor:
 
 def _ragged_probabilities(utility: torch.Tensor, data: ChoiceDataset, row_to_obs: torch.Tensor) -> torch.Tensor:
     masked_utility = utility.masked_fill(~data.availability, -torch.inf)
+    # Segment-wise maximum subtraction is the ragged equivalent of stable
+    # softmax and prevents overflow before exponentiation.
     max_by_obs = torch.full((data.n_obs,), -torch.inf, dtype=utility.dtype, device=utility.device)
     max_by_obs = max_by_obs.scatter_reduce(0, row_to_obs, masked_utility, reduce="amax", include_self=True)
     if not bool(torch.isfinite(max_by_obs).all()):
@@ -329,6 +345,8 @@ def _ragged_probabilities(utility: torch.Tensor, data: ChoiceDataset, row_to_obs
 
 def _ragged_loglike_per_obs(utility: torch.Tensor, data: ChoiceDataset, row_to_obs: torch.Tensor) -> torch.Tensor:
     masked_utility = utility.masked_fill(~data.availability, -torch.inf)
+    # Reproduce logsumexp with scatter reductions because choice sets have
+    # different lengths and cannot be reshaped into a rectangular tensor.
     max_by_obs = torch.full((data.n_obs,), -torch.inf, dtype=utility.dtype, device=utility.device)
     max_by_obs = max_by_obs.scatter_reduce(0, row_to_obs, masked_utility, reduce="amax", include_self=True)
     if not bool(torch.isfinite(max_by_obs).all()):

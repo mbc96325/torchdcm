@@ -24,6 +24,8 @@ def _package_version() -> str:
 
 
 def _as_python(value: Any) -> Any:
+    # Normalize tensors and NumPy scalars at the report boundary so JSON, HTML,
+    # text, and LaTeX renderers consume the same presentation-neutral data.
     if isinstance(value, torch.Tensor):
         if value.numel() == 1:
             return value.detach().cpu().item()
@@ -132,6 +134,8 @@ class EstimationReport:
         covariance = pd.DataFrame(covariance_array, index=parameter_names, columns=parameter_names)
         scale = np.sqrt(np.clip(np.diag(covariance_array), a_min=0.0, a_max=None))
         denominator = np.outer(scale, scale)
+        # Zero-variance parameters have undefined correlations; retain NaN so
+        # renderers can display "--" instead of an artificial zero.
         correlation_array = np.divide(
             covariance_array,
             denominator,
@@ -153,6 +157,8 @@ class EstimationReport:
         sections["Model fit"] = _fit_section(results)
         sections["Inference"] = _inference_section(results, selected_cov, confidence_level)
 
+        # Build each table once, then reuse it verbatim across all output
+        # formats to prevent HTML/text/JSON reports from drifting.
         parameters = _parameter_table(results, selected_cov, confidence_level)
         alternatives = _alternative_table(results.data)
         _append_numerical_warnings(results, parameters, covariance_array, warnings)
@@ -429,6 +435,7 @@ def _data_section(data: object) -> OrderedDict[str, Any]:
     obs_ptr = getattr(data, "obs_ptr", None)
     if obs_ptr is not None and len(obs_ptr) > 1:
         widths = torch.diff(obs_ptr.detach().cpu())
+        # Equal row-pointer differences identify the vectorizable balanced case.
         structure = "Balanced" if bool((widths == widths[0]).all()) else "Ragged"
     weighted = None
     weights = getattr(data, "weights", None)
@@ -533,6 +540,8 @@ def _estimation_section(results: object, warnings: list[str]) -> OrderedDict[str
         status_label = "Not recorded"
 
     information = results.hessian.detach().cpu().numpy()
+    # Floating-point Hessian evaluation can introduce tiny asymmetry; symmetrize
+    # before eigenvalue, rank, and condition-number diagnostics.
     information = 0.5 * (information + information.T)
     rank = int(np.linalg.matrix_rank(information)) if np.isfinite(information).all() else None
     minimum = maximum = condition = positive_definite = None
@@ -578,6 +587,8 @@ def _fit_section(results: object) -> OrderedDict[str, Any]:
     degrees_of_freedom = int(results.n_params)
     lr_pvalue = None
     if degrees_of_freedom > 0:
+        # Chi-square survival probability via the regularized upper incomplete
+        # gamma function avoids an additional SciPy dependency.
         lr_pvalue = float(
             torch.special.gammaincc(
                 torch.tensor(degrees_of_freedom / 2.0, dtype=torch.float64),
@@ -642,6 +653,8 @@ def _parameter_table(results: object, cov_type: str, confidence_level: float) ->
         estimate = float(estimates[index])
         z_value = (estimate - null_value) / standard_error if standard_error > 0 else np.nan
         p_value = erfc(abs(z_value) / sqrt(2.0)) if isfinite(z_value) else np.nan
+        # Preserve a stable column order because the same DataFrame feeds HTML,
+        # CSV, LaTeX, JSON records, and console output.
         rows.append(
             {
                 "Group": _parameter_group(name, results.model),

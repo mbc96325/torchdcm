@@ -91,6 +91,8 @@ class ScaledMultinomialLogit:
         if unknown:
             raise ValueError(f"Scale specification contains unknown alternatives: {unknown}")
 
+        # Utility compilation is shared with MNL; this class adds only the
+        # alternative-specific scale block.
         mnl = MultinomialLogit(self.spec, dtype=self.dtype, device=self.device)
         compiled_mnl = mnl.compile(data)
 
@@ -108,6 +110,8 @@ class ScaledMultinomialLogit:
             scale_is_fixed.append(scale.fixed)
             scale_names.append(scale.name or f"SCALE_{alt.upper()}")
         if not any(scale_is_fixed):
+            # Only relative scales are identified, so one alternative must set
+            # the scale normalization.
             raise ValueError("At least one alternative scale must be fixed for identification.")
 
         free_scale_names = [name for name, fixed in zip(scale_names, scale_is_fixed) if not fixed]
@@ -151,6 +155,8 @@ class ScaledMultinomialLogit:
         compiled = compiled or self.compile(data)
         beta, scales = self._split_natural_params(params.to(device=self.device, dtype=self.dtype), compiled)
         utility = self.utilities(beta, data, compiled)
+        # ``scale_by_row_index`` broadcasts alternative-level scales to long
+        # rows without constructing a repeated design matrix.
         return utility / scales[compiled.scale_by_row_index]
 
     def loglike_per_obs(
@@ -358,6 +364,7 @@ class ScaledMultinomialLogit:
         return torch.log(torch.clamp(scales - self.scale_min, min=1e-12))
 
     def _internal_to_scale(self, internal: torch.Tensor) -> torch.Tensor:
+        # Exponential mapping keeps scales strictly above the configured floor.
         return self.scale_min + torch.exp(internal)
 
 

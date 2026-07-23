@@ -163,6 +163,9 @@ class ChoiceDataset:
         if unknown_alts:
             raise ValueError(f"Unknown alternatives not present in alt_order: {unknown_alts}")
 
+        # Stable sorting makes every observation a contiguous segment.  The
+        # resulting ``obs_ptr`` array is the row-pointer representation used by
+        # the likelihood kernels, so ragged choice sets need no padding.
         frame["_torchdcm_alt_code"] = frame[alt_id].map(alt_to_code).astype(int)
         frame["_torchdcm_order"] = np.arange(len(frame))
         frame = frame.sort_values([obs_id, "_torchdcm_alt_code", "_torchdcm_order"], kind="stable")
@@ -176,6 +179,8 @@ class ChoiceDataset:
         individual_ids: list | None = [] if individual_id else None
         individual_map = {}
 
+        # Construct observation-level tensors while walking the contiguous
+        # long-format segments only once.
         row_cursor = 0
         for _, group in frame.groupby(obs_id, sort=False):
             n_rows = len(group)
@@ -213,6 +218,8 @@ class ChoiceDataset:
             if availability is None
             else frame[availability].to_numpy().astype(bool)
         )
+        # An unavailable chosen row would make the observation likelihood zero
+        # and usually signals a data-preparation error, so reject it early.
         chosen_avail = avail_values[np.asarray(chosen_rows, dtype=int)]
         if not chosen_avail.all():
             raise ValueError("Chosen alternatives must be available.")
@@ -258,6 +265,8 @@ class ChoiceDataset:
         alternatives = list(alternatives)
         obs_variable_map = _normalize_obs_variables(obs_variables)
         rows = []
+        # Wide input is converted through the same validated long-data path.
+        # This keeps both constructors identical after data normalization.
         for row_no, (_, row) in enumerate(df.iterrows()):
             obs_value = row[obs_id] if obs_id else row_no
             chosen_alt = row[choice]

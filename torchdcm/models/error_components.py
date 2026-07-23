@@ -74,6 +74,8 @@ class ErrorComponentsLogit(MixedLogit):
             for component in self.components:
                 loading = component.loading_for(alternative)
                 if loading:
+                    # Compile an error component as a fixed loading multiplied
+                    # by a latent random coefficient supplied by MixedLogit.
                     terms.append(Term(Beta(component.parameter_name, init=0.0, fixed=True), component.variable_name, loading))
             augmented.utility(alternative, Expression(terms))
         return augmented
@@ -86,6 +88,8 @@ class ErrorComponentsLogit(MixedLogit):
         alt_codes = data.alt_id.to(device=data.device)
         x_alt = dict(data.x_alt)
         for component in self.components:
+            # Materialize one loading column per component.  This converts the
+            # covariance pattern into ordinary random-coefficient tensor math.
             values = torch.zeros(data.n_rows, dtype=data.dtype, device=data.device)
             for alt_index, alternative in enumerate(data.alt_names):
                 loading = component.loading_for(alternative)

@@ -52,6 +52,8 @@ class PanelStructure:
             dtype=values.dtype,
             device=values.device,
         )
+        # ``index_add`` performs the group sum on the active device and avoids
+        # a Python loop over individuals.
         return output.index_add(0, self.obs_to_unit.to(device=values.device), values)
 
     def logmeanexp_by_unit(self, obs_log_values: torch.Tensor, dim: int = 1) -> torch.Tensor:
@@ -63,6 +65,8 @@ class PanelStructure:
         """
 
         unit_log_values = self.sum_by_unit(obs_log_values)
+        # Sum across repeated choices before integrating over draws.  Reversing
+        # these operations would incorrectly allow tastes to change by occasion.
         return torch.logsumexp(unit_log_values, dim=dim) - torch.log(
             torch.as_tensor(unit_log_values.shape[dim], dtype=unit_log_values.dtype, device=unit_log_values.device)
         )

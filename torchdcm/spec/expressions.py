@@ -20,6 +20,8 @@ class Expression:
 
     @property
     def parameters(self) -> list["Beta"]:
+        # A name is the public identity of a parameter.  Reusing a name is
+        # allowed only when its initialization and fixed status agree.
         params = {}
         for term in self.terms:
             old = params.get(term.parameter.name)
@@ -29,6 +31,8 @@ class Expression:
         return list(params.values())
 
     def __add__(self, other) -> "Expression":
+        # Keep expressions as a flat term list.  Compilation can then build
+        # design-matrix columns without traversing an expression tree.
         if other == 0:
             return self
         if isinstance(other, Expression):

@@ -45,6 +45,8 @@ class TrackedLBFGS(torch.optim.LBFGS):
         state.setdefault("func_evals", 0)
         state.setdefault("n_iter", 0)
 
+        # Evaluate once before entering the quasi-Newton loop so the first
+        # stopping test uses the same gradient definition as later iterations.
         original_loss = closure()
         loss = float(original_loss)
         current_evals = 1
@@ -80,6 +82,8 @@ class TrackedLBFGS(torch.optim.LBFGS):
                 gradient_difference = flat_grad.sub(previous_gradient)
                 previous_step = direction.mul(step_size)
                 curvature = gradient_difference.dot(previous_step)
+                # Skip an unstable curvature pair instead of contaminating the
+                # limited-memory inverse-Hessian approximation.
                 if curvature > 1e-10:
                     if len(old_dirs) == history_size:
                         old_dirs.pop(0)
@@ -97,6 +101,8 @@ class TrackedLBFGS(torch.optim.LBFGS):
                     state["al"] = [None] * history_size
                 coefficients = state["al"]
                 approximate_direction = flat_grad.neg()
+                # Standard L-BFGS two-loop recursion.  Only ``history_size``
+                # vector pairs are retained, never a dense Hessian.
                 for index in range(history_length - 1, -1, -1):
                     coefficients[index] = (
                         old_steps[index].dot(approximate_direction)
@@ -149,6 +155,8 @@ class TrackedLBFGS(torch.optim.LBFGS):
                         search_direction,
                     )
 
+                # Strong Wolfe search chooses a stable step while preserving
+                # PyTorch's closure-based autograd evaluation.
                 loss, flat_grad, step_size, line_search_evals = _strong_wolfe(
                     objective,
                     initial_parameters,
@@ -188,6 +196,9 @@ class TrackedLBFGS(torch.optim.LBFGS):
             if bool(gradient_condition):
                 stop_reason = "gradient_tolerance"
                 break
+            # Record the first satisfied non-gradient criterion explicitly.
+            # The report can therefore distinguish stable function/step stops
+            # from iteration and evaluation limits.
             if direction.mul(step_size).abs().max() <= tolerance_change:
                 stop_reason = "step_tolerance"
                 break
@@ -244,6 +255,9 @@ def lbfgs_convergence_status(
     finite = gradient_finite and isfinite(loss_value)
     reason = optimizer.termination_reason or "unknown"
 
+    # Optimizers work with the summed log likelihood, whose raw gradient grows
+    # with sample size.  The normalized norm is therefore the comparable
+    # diagnostic used for warnings across datasets.
     if not finite:
         message = "Stopped (non-finite objective or gradient)"
         success: bool | None = False

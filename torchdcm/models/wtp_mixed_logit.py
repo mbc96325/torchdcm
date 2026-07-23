@@ -116,6 +116,8 @@ class WTPMixedLogit:
         if invalid:
             raise ValueError(f"Unsupported WTP distributions: {invalid}")
 
+        # Alternative constants and other non-WTP terms use the standard MNL
+        # compiler; monetary trade-offs are added as a separate random block.
         deterministic = MultinomialLogit(self.spec, dtype=self.dtype, device=self.device).compile(data)
         sigma_names = [coef.sigma_name or f"SIGMA_{coef.name}" for coef in self.wtp_coefficients]
         if len(set(sigma_names)) != len(sigma_names):
@@ -179,6 +181,8 @@ class WTPMixedLogit:
             utility = utility + compiled.deterministic_fixed_design @ compiled.deterministic_fixed_values
         utility = utility.unsqueeze(1)
         cost_values = data.x_alt[compiled.cost_variable].to(device=self.device, dtype=self.dtype).unsqueeze(1)
+        # WTP-space utility is alpha * (cost + w' x).  Multiplying every random
+        # WTP by the common cost coefficient preserves this interpretation.
         utility = utility + cost * cost_values
         if compiled.wtp_names:
             drawn_wtp = self._drawn_wtp(wtp, sigmas, chol_offdiag, compiled)
@@ -196,6 +200,7 @@ class WTPMixedLogit:
         obs_log_prob = self._log_prob_per_obs_draw(params, data, compiled)
         compiled = compiled or self.compile(data.to(device=self.device, dtype=self.dtype))
         if self.panel and data.obs_to_ind is not None:
+            # Repeated choices share one WTP draw within each individual.
             return data.to(device=self.device, dtype=self.dtype).panel_structure().logmeanexp_by_unit(obs_log_prob)
         return torch.logsumexp(obs_log_prob, dim=1) - torch.log(
             torch.as_tensor(compiled.draws.shape[0], dtype=self.dtype, device=self.device)
@@ -367,6 +372,8 @@ class WTPMixedLogit:
     ) -> torch.Tensor:
         if not compiled.wtp_names:
             return torch.zeros((compiled.draws.shape[0], 0), dtype=self.dtype, device=self.device)
+        # Draw the latent-normal WTP vector first, then apply any requested
+        # lognormal transformation coefficient by coefficient.
         latent = wtp.unsqueeze(0) + compiled.draws @ self._cholesky_factor(sigmas, chol_offdiag, compiled).T
         values = []
         for index, distribution in enumerate(compiled.distributions):
@@ -422,6 +429,8 @@ class WTPMixedLogit:
         return torch.cat(parts) if parts else torch.zeros(0, dtype=self.dtype, device=self.device)
 
     def _internal_to_natural(self, internal: torch.Tensor, compiled: CompiledWTPMixedUtility) -> torch.Tensor:
+        # Only free scale parameters require transformation; utility, cost,
+        # WTP means, and Cholesky off-diagonals remain unrestricted.
         cursor = 0
         parts = []
         deterministic = internal[cursor : cursor + len(compiled.deterministic_names)]
@@ -491,6 +500,8 @@ class WTPMixedLogit:
         generator = torch.Generator(device="cpu")
         generator.manual_seed(self.seed)
         if self.antithetic:
+            # Draw generation stays on CPU for reproducibility across devices;
+            # the completed matrix is transferred once at the end.
             half = (self.n_draws + 1) // 2
             base = torch.randn((half, n_random), generator=generator, dtype=self.dtype)
             draws = torch.cat([base, -base], dim=0)[: self.n_draws]

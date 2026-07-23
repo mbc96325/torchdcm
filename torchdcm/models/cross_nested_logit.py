@@ -99,6 +99,8 @@ class CrossNestedLogit:
             dtype=self.dtype,
             device=self.device,
         )
+        # Store allocation weights in a dense alternative-by-nest tensor.
+        # Zero entries mean that an alternative does not belong to that nest.
         for nest_index, (nest_name, nest) in enumerate(self.nests.items()):
             for alt, alpha in nest.allocations.items():
                 if alt not in alt_to_code:
@@ -107,6 +109,8 @@ class CrossNestedLogit:
                     raise ValueError(f"Allocation for alternative {alt!r} in nest {nest_name!r} must be non-negative.")
                 alpha_by_alt[alt_to_code[alt], nest_index] = float(alpha)
         allocation_sums = alpha_by_alt.sum(dim=1)
+        # The normalized CNL generating function assumes each alternative's
+        # allocations sum to one.
         if not bool(torch.all(torch.abs(allocation_sums - 1.0) <= self.allocation_tol)):
             bad = [
                 data.alt_names[i]
@@ -210,6 +214,8 @@ class CrossNestedLogit:
                 nest_alpha = alpha[:, :, nest_index]
                 mask = availability & (nest_alpha > 0)
                 log_alpha = torch.log(torch.clamp(nest_alpha, min=torch.finfo(self.dtype).tiny))
+                # Work in log space because allocation weights and exponentiated
+                # utilities can otherwise underflow in different nests.
                 scaled = (log_alpha + utility_by_obs / lam).masked_fill(~mask, -torch.inf)
                 iv = torch.logsumexp(scaled, dim=1)
                 has_nest = mask.any(dim=1)
@@ -224,6 +230,8 @@ class CrossNestedLogit:
                     ).masked_fill(~(chosen_mask & has_nest), -torch.inf)
                 )
             iv_by_nest = torch.stack(iv_columns, dim=1)
+            # The denominator aggregates nest generating terms, while the
+            # numerator sums every nest to which the chosen alternative belongs.
             denominator = torch.logsumexp(lambdas.reshape(1, -1) * iv_by_nest, dim=1)
             numerator = torch.logsumexp(torch.stack(numerator_columns, dim=1), dim=1)
             return data.weights * (numerator - denominator)
