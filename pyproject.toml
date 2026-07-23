@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "torchdcm"
-version = "0.1.0"
+version = "0.1.1"
 description = "PyTorch-first discrete choice model estimation with econometric inference."
 readme = "README.md"
 requires-python = ">=3.10"

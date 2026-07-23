@@ -20,7 +20,7 @@ def _package_version() -> str:
     try:
         return metadata.version("torchdcm")
     except metadata.PackageNotFoundError:
-        return "0.1.0"
+        return "0.1.1"
 
 
 def _as_python(value: Any) -> Any:
