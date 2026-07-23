@@ -1,7 +1,7 @@
 # TorchDCM
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/mbc96325/torchdcm-paper/main/docs/assets/torchdcm-logo.png" alt="TorchDCM logo" width="86%">
+  <img src="https://raw.githubusercontent.com/mbc96325/torchdcm/main/docs/assets/torchdcm-logo.png" alt="TorchDCM logo" width="86%">
 </p>
 
 <p align="center">
@@ -9,9 +9,10 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick Start</a> |
-  <a href="#model-zoo">Model Zoo</a> |
   <a href="#installation">Installation</a> |
+  <a href="#quick-start">Quick Start</a> |
+  <a href="#executed-examples">Examples</a> |
+  <a href="#model-zoo">Model Zoo</a> |
   <a href="#benchmarks-and-validation">Benchmarks</a> |
   <a href="#development">Development</a>
 </p>
@@ -21,7 +22,7 @@
   <a href="https://pypi.org/project/torchdcm/"><img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue"></a>
   <a href="https://pytorch.org/"><img alt="PyTorch" src="https://img.shields.io/badge/backend-PyTorch-ee4c2c"></a>
   <a href="#model-zoo"><img alt="Models" src="https://img.shields.io/badge/models-MNL%20%7C%20NL%20%7C%20Mixed%20Logit%20%7C%20Hybrid-2b9348"></a>
-  <a href="https://github.com/mbc96325/torchdcm-paper/blob/main/validation/README.md"><img alt="Benchmarks" src="https://img.shields.io/badge/benchmarks-Biogeme%20%7C%20Apollo%20%7C%20mlogit%20%7C%20xlogit-6c63ff"></a>
+  <a href="https://github.com/mbc96325/torchdcm-paper"><img alt="Benchmarks" src="https://img.shields.io/badge/benchmarks-Biogeme%20%7C%20Apollo%20%7C%20mlogit%20%7C%20xlogit-6c63ff"></a>
   <a href="#development"><img alt="Status" src="https://img.shields.io/badge/status-research%20prototype-f59f00"></a>
 </p>
 
@@ -30,11 +31,11 @@ This repository is intentionally package-first: it keeps the reusable
 `torchdcm` implementation, unit tests, examples, and packaging metadata in one
 small repo that users can install and import directly.
 
-The software-paper repository is separate and contains public benchmark data,
-validation wrappers, plots, comparison tables, generated results, and LaTeX:
+The paper's reproducibility repository is separate and contains benchmark
+runners, aligned datasets, validation utilities, and committed outputs:
 
 <p align="center">
-  <a href="https://github.com/mbc96325/torchdcm-paper/tree/main/validation"><b>torchdcm-paper: validation, benchmarks, datasets, and manuscript</b></a>
+  <a href="https://github.com/mbc96325/torchdcm-paper"><b>torchdcm-paper: reproduce the validation and benchmark results</b></a>
 </p>
 
 ## Why TorchDCM
@@ -44,7 +45,7 @@ validation wrappers, plots, comparison tables, generated results, and LaTeX:
 | PyTorch-native estimation | Vectorized likelihoods written around tensors and automatic differentiation. |
 | Econometric outputs | Classic, robust, and cluster covariance; WTP and elasticity helpers. |
 | Model coverage | MNL, NL, CNL, mixed logit, WTP-space, latent class, scaled, ordered, and hybrid choice. |
-| Reusable package | Clean import surface with examples and package-level tests. |
+| Reusable package | Clean import surface, executed model notebooks, and package-level tests. |
 | Benchmark companion | Full comparisons live in `torchdcm-paper` and import this package. |
 
 ## Installation
@@ -136,6 +137,30 @@ All estimators accept a standard PyTorch-style `device` argument. Passing
 covariance calculations for that model to CUDA when your PyTorch installation
 has GPU support.
 
+## Executed Examples
+
+The [`examples/`](examples) directory contains self-contained Jupyter
+notebooks for every public model family. Each notebook has been fully executed
+on the Office validation machine and retains its data-generation, estimation,
+and numerical output. The examples automatically select CUDA when it is
+available and can be changed to CPU by setting `device = "cpu"`.
+
+| Model | Executed notebook |
+| --- | --- |
+| Multinomial logit | [`01_multinomial_logit.ipynb`](examples/01_multinomial_logit.ipynb) |
+| Nested logit | [`02_nested_logit.ipynb`](examples/02_nested_logit.ipynb) |
+| Cross-nested logit | [`03_cross_nested_logit.ipynb`](examples/03_cross_nested_logit.ipynb) |
+| Mixed logit | [`04_mixed_logit.ipynb`](examples/04_mixed_logit.ipynb) |
+| WTP-space mixed logit | [`05_wtp_space_mixed_logit.ipynb`](examples/05_wtp_space_mixed_logit.ipynb) |
+| Alternative-scaled MNL | [`06_scaled_multinomial_logit.ipynb`](examples/06_scaled_multinomial_logit.ipynb) |
+| Covariate-scaled MNL | [`07_covariate_scaled_multinomial_logit.ipynb`](examples/07_covariate_scaled_multinomial_logit.ipynb) |
+| Ordered logit | [`08_ordered_logit.ipynb`](examples/08_ordered_logit.ipynb) |
+| Ordered probit | [`09_ordered_probit.ipynb`](examples/09_ordered_probit.ipynb) |
+| Latent-class logit | [`10_latent_class_logit.ipynb`](examples/10_latent_class_logit.ipynb) |
+| Error-components logit | [`11_error_components_logit.ipynb`](examples/11_error_components_logit.ipynb) |
+| Hybrid choice | [`12_hybrid_choice.ipynb`](examples/12_hybrid_choice.ipynb) |
+| Panel mixed logit | [`13_panel_mixed_logit.ipynb`](examples/13_panel_mixed_logit.ipynb) |
+
 ## Model Zoo
 
 The current package includes:
@@ -160,17 +185,17 @@ to a separate illustrative example.
 
 | Benchmark | Scope | Runner | Published output |
 | --- | --- | --- | --- |
-| Controlled synthetic data | MNL, NL, and MixL sweeps over sample size, alternatives, coefficients, correlation, and stress cases | [`compare_generated_choice_battery.py`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/benchmarks/compare_generated_choice_battery.py) | [MNL](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/generated/generated_choice_battery_controlled_office.md), [NL](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/generated/generated_choice_battery_table4_nl_office.md), [MixL](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/generated/generated_choice_battery_table4_mixl_office.md) |
-| Real-data MNL | TorchDCM, SciPy, Biogeme, Apollo, `mlogit`, `gmnl`, and `xlogit` | [`run_solver_attempt_matrix.py`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/benchmarks/run_solver_attempt_matrix.py) | [`solver_attempt_matrix_mnl_single_core_office.md`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/generated/solver_attempt_matrix_mnl_single_core_office.md) |
-| Real-data NL | TorchDCM, Biogeme, and Apollo | [`compare_real_nested_logit_battery.py`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/benchmarks/compare_real_nested_logit_battery.py) | [`nested_real_battery_single_core_office.md`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/generated/nested_real_battery_single_core_office.md) |
-| Real-data MixL | TorchDCM, Biogeme, and Apollo with aligned model specifications | [`compare_real_mixed_logit_battery.py`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/benchmarks/compare_real_mixed_logit_battery.py) | [`mixed_real_battery_apollo_office.md`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/generated/mixed_real_battery_apollo_office.md) |
-| CPU--GPU scaling | MNL, NL, and MixL device comparisons | [`compare_torch_device_stress.py`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/benchmarks/compare_torch_device_stress.py) | [`torch_device_stress_battery.md`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/generated/torch_device_stress_battery.md) |
-| Ordered responses | Ordered logit and ordered probit parity with Biogeme | [`compare_ordered_estimators.py`](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/benchmarks/compare_ordered_estimators.py) | [Ordered logit](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/generated/ordered_logit_single_core_office.json), [ordered probit](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/generated/ordered_probit_single_core_office.json) |
+| Controlled synthetic data | MNL, NL, and MixL sweeps over sample size, alternatives, coefficients, correlation, and stress cases | [`compare_generated_choice_battery.py`](https://github.com/mbc96325/torchdcm-paper/blob/main/benchmarks/compare_generated_choice_battery.py) | [MNL](https://github.com/mbc96325/torchdcm-paper/blob/main/generated/generated_choice_battery_controlled_office.md), [NL](https://github.com/mbc96325/torchdcm-paper/blob/main/generated/generated_choice_battery_table4_nl_office.md), [MixL](https://github.com/mbc96325/torchdcm-paper/blob/main/generated/generated_choice_battery_table4_mixl_office.md) |
+| Real-data MNL | TorchDCM, SciPy, Biogeme, Apollo, `mlogit`, `gmnl`, and `xlogit` | [`run_solver_attempt_matrix.py`](https://github.com/mbc96325/torchdcm-paper/blob/main/benchmarks/run_solver_attempt_matrix.py) | [`solver_attempt_matrix_mnl_single_core_office.md`](https://github.com/mbc96325/torchdcm-paper/blob/main/generated/solver_attempt_matrix_mnl_single_core_office.md) |
+| Real-data NL | TorchDCM, Biogeme, and Apollo | [`compare_real_nested_logit_battery.py`](https://github.com/mbc96325/torchdcm-paper/blob/main/benchmarks/compare_real_nested_logit_battery.py) | [`nested_real_battery_single_core_office.md`](https://github.com/mbc96325/torchdcm-paper/blob/main/generated/nested_real_battery_single_core_office.md) |
+| Real-data MixL | TorchDCM, Biogeme, and Apollo with aligned model specifications | [`compare_real_mixed_logit_battery.py`](https://github.com/mbc96325/torchdcm-paper/blob/main/benchmarks/compare_real_mixed_logit_battery.py) | [`mixed_real_battery_apollo_office.md`](https://github.com/mbc96325/torchdcm-paper/blob/main/generated/mixed_real_battery_apollo_office.md) |
+| CPU--GPU scaling | MNL, NL, and MixL device comparisons | [`compare_torch_device_stress.py`](https://github.com/mbc96325/torchdcm-paper/blob/main/benchmarks/compare_torch_device_stress.py) | [`torch_device_stress_battery.md`](https://github.com/mbc96325/torchdcm-paper/blob/main/generated/torch_device_stress_battery.md) |
+| Ordered responses | Ordered logit and ordered probit parity with Biogeme | [`compare_ordered_estimators.py`](https://github.com/mbc96325/torchdcm-paper/blob/main/benchmarks/compare_ordered_estimators.py) | [Ordered logit](https://github.com/mbc96325/torchdcm-paper/blob/main/generated/ordered_logit_single_core_office.json), [ordered probit](https://github.com/mbc96325/torchdcm-paper/blob/main/generated/ordered_probit_single_core_office.json) |
 
-See the [validation guide](https://github.com/mbc96325/torchdcm-paper/blob/main/validation/README.md),
+See the [benchmark guide](https://github.com/mbc96325/torchdcm-paper/blob/main/BENCHMARK_SYSTEM.md),
 [dataset catalog](https://github.com/mbc96325/torchdcm-paper/blob/main/datasets/dataset_index.csv),
-and [manuscript](https://github.com/mbc96325/torchdcm-paper/blob/main/paper/main.pdf)
-for the complete reproducibility workflow.
+and [validation dataset notes](https://github.com/mbc96325/torchdcm-paper/blob/main/datasets/VALIDATION.md)
+for the complete reproduction workflow.
 
 ## Repository Layout
 
@@ -178,7 +203,7 @@ for the complete reproducibility workflow.
 | --- | --- |
 | `torchdcm/` | Importable package implementation. |
 | `tests/` | Package-level unit tests. |
-| `examples/` | Minimal runnable usage examples. |
+| `examples/` | Executed Jupyter notebooks covering every public model family. |
 | `docs/assets/` | GitHub README logo and cover assets. |
 | `pyproject.toml` | Packaging metadata and dependencies. |
 
@@ -189,7 +214,7 @@ python -m pip install -e ".[dev]"
 pytest
 ```
 
-Benchmark and manuscript work should happen in the companion repository:
+Benchmark and validation work should happen in the companion repository:
 
 ```bash
 git clone https://github.com/mbc96325/torchdcm-paper.git
