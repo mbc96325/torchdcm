@@ -165,7 +165,8 @@ CPU by setting `device = "cpu"`.
 | Latent-class logit | [`10_latent_class_logit.ipynb`](examples/10_latent_class_logit.ipynb) |
 | Error-components logit | [`11_error_components_logit.ipynb`](examples/11_error_components_logit.ipynb) |
 | Hybrid choice | [`12_hybrid_choice.ipynb`](examples/12_hybrid_choice.ipynb) |
-| Panel mixed logit | [`13_panel_mixed_logit.ipynb`](examples/13_panel_mixed_logit.ipynb) |
+| Panel multinomial logit | [`13_panel_multinomial_logit.ipynb`](examples/13_panel_multinomial_logit.ipynb) |
+| Panel mixed logit | [`14_panel_mixed_logit.ipynb`](examples/14_panel_mixed_logit.ipynb) |
 
 ## Model Zoo
 
