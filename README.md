@@ -141,9 +141,9 @@ has GPU support.
 
 The [`examples/`](examples) directory contains self-contained Jupyter
 notebooks for every public model family. Each notebook has been fully executed
-on the Office validation machine and retains its data-generation, estimation,
-and numerical output. The examples automatically select CUDA when it is
-available and can be changed to CPU by setting `device = "cpu"`.
+on the Office validation machine and retains its data generation, estimation
+output, and rendered HTML report. The examples automatically select CUDA when
+it is available and can be changed to CPU by setting `device = "cpu"`.
 
 | Model | Executed notebook |
 | --- | --- |

@@ -478,7 +478,21 @@ def _model_specification(model: object) -> OrderedDict[str, Any]:
         section["Utility starting values"] = {parameter.name: parameter.init for parameter in parameters}
     nests = getattr(model, "nests", None)
     if nests:
-        section["Nests"] = {name: list(nest.alternatives) for name, nest in nests.items()}
+        nest_members = {}
+        cross_nest_allocations = {}
+        for name, nest in nests.items():
+            alternatives = getattr(nest, "alternatives", None)
+            allocations = getattr(nest, "allocations", None)
+            if alternatives is not None:
+                nest_members[name] = list(alternatives)
+            elif allocations is not None:
+                nest_members[name] = list(allocations)
+                cross_nest_allocations[name] = dict(allocations)
+            else:
+                nest_members[name] = []
+        section["Nests"] = nest_members
+        if cross_nest_allocations:
+            section["Cross-nest allocations"] = cross_nest_allocations
     random_coefficients = getattr(model, "random_coefficients", None)
     if random_coefficients:
         section["Random coefficients"] = {
