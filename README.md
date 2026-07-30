@@ -21,7 +21,7 @@
   <a href="https://pypi.org/project/torchdcm/"><img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue"></a>
   <a href="https://pytorch.org/"><img alt="PyTorch" src="https://img.shields.io/badge/backend-PyTorch-ee4c2c"></a>
   <a href="#model-zoo"><img alt="Models" src="https://img.shields.io/badge/models-MNL%20%7C%20NL%20%7C%20Mixed%20Logit%20%7C%20Hybrid-2b9348"></a>
-  <a href="https://github.com/mbc96325/torchdcm-paper"><img alt="Benchmarks" src="https://img.shields.io/badge/benchmarks-Biogeme%20%7C%20Apollo%20%7C%20mlogit%20%7C%20xlogit-6c63ff"></a>
+  <a href="https://github.com/mbc96325/torchdcm-evaluation-benchmark"><img alt="Benchmarks" src="https://img.shields.io/badge/benchmarks-Biogeme%20%7C%20Apollo%20%7C%20mlogit%20%7C%20xlogit-6c63ff"></a>
   <a href="#development"><img alt="Status" src="https://img.shields.io/badge/status-research%20prototype-f59f00"></a>
 </p>
 
@@ -34,7 +34,7 @@ The paper's reproducibility repository is separate and contains benchmark
 runners, aligned datasets, validation utilities, and committed outputs:
 
 <p align="center">
-  <a href="https://github.com/mbc96325/torchdcm-paper"><b>torchdcm-paper: reproduce the validation and benchmark results</b></a>
+  <a href="https://github.com/mbc96325/torchdcm-evaluation-benchmark"><b>torchdcm-evaluation-benchmark: reproduce the validation and benchmark results</b></a>
 </p>
 
 ## Why TorchDCM
@@ -45,7 +45,7 @@ runners, aligned datasets, validation utilities, and committed outputs:
 | Econometric outputs | Classic, robust, and cluster covariance; WTP and elasticity helpers. |
 | Model coverage | MNL, NL, CNL, mixed logit, WTP-space, latent class, scaled, ordered, and hybrid choice. |
 | Reusable package | Clean import surface, executed model notebooks, and package-level tests. |
-| Benchmark companion | Full comparisons live in `torchdcm-paper` and import this package. |
+| Benchmark companion | Full comparisons live in `torchdcm-evaluation-benchmark` and import this package. |
 
 ## Installation
 
@@ -202,5 +202,5 @@ pytest
 Benchmark and validation work should happen in the companion repository:
 
 ```bash
-git clone https://github.com/mbc96325/torchdcm-paper.git
+git clone https://github.com/mbc96325/torchdcm-evaluation-benchmark.git
 ```

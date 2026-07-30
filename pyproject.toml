@@ -41,7 +41,7 @@ dev = ["pytest>=7"]
 Homepage = "https://github.com/mbc96325/torchdcm"
 Repository = "https://github.com/mbc96325/torchdcm"
 Issues = "https://github.com/mbc96325/torchdcm/issues"
-Benchmarks = "https://github.com/mbc96325/torchdcm-paper"
+Benchmarks = "https://github.com/mbc96325/torchdcm-evaluation-benchmark"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
