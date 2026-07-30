@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from torchdcm import Beta, ChoiceDataset, ErrorComponent, ErrorComponentsLogit, MixedLogit, RandomCoefficient, UtilitySpec
@@ -102,6 +103,70 @@ def test_mixed_logit_lognormal_random_coefficients():
     assert torch.allclose(drawn[:, time_index], expected_time)
     assert torch.allclose(drawn[:, cost_index], expected_cost)
     assert torch.isfinite(model.loglike(params, data, compiled))
+
+
+def test_mixed_logit_softplus_scale_transform_is_finite_and_invertible():
+    model = MixedLogit(
+        swissmetro_spec(),
+        [RandomCoefficient("B_TIME", sigma_init=0.2)],
+        draws=torch.zeros((1, 1), dtype=torch.float64),
+    )
+    internal = torch.tensor([-1000.0, 0.0, 1000.0], dtype=torch.float64)
+    scales = model._internal_to_sigma(internal)
+
+    assert torch.isfinite(scales).all()
+    assert bool((scales >= 0).all())
+    assert torch.allclose(scales[-1], torch.tensor(1000.0, dtype=torch.float64))
+
+    target = torch.tensor([1e-8, 0.1, 1.0, 1000.0], dtype=torch.float64)
+    roundtrip = model._internal_to_sigma(model._sigma_to_internal(target))
+    assert torch.allclose(roundtrip, target, rtol=1e-10, atol=1e-12)
+
+
+def test_mixed_logit_fit_rejects_nonfinite_initial_likelihood():
+    data = swissmetro_panel_data(6)
+    spec = UtilitySpec()
+    for alternative in ["TRAIN", "SM", "CAR"]:
+        spec.utility(alternative, Beta("B_TIME", init=1000.0) * "time")
+    model = MixedLogit(
+        spec,
+        [
+            RandomCoefficient(
+                "B_TIME",
+                sigma_init=0.2,
+                distribution="lognormal",
+            )
+        ],
+        draws=torch.zeros((1, 1), dtype=torch.float64),
+        panel=False,
+    )
+
+    with pytest.raises(RuntimeError, match="initial log-likelihood is non-finite"):
+        model.fit(data)
+
+
+def test_mixed_logit_fit_reports_internal_convergence_diagnostics():
+    data = swissmetro_panel_data(12)
+    draws = torch.tensor([[-1.0], [0.0], [1.0]], dtype=torch.float64)
+    model = MixedLogit(
+        swissmetro_spec(),
+        [RandomCoefficient("B_TIME", sigma_init=0.2)],
+        draws=draws,
+        panel=False,
+        max_iter=5,
+    )
+    result = model.fit(data)
+    status = result.convergence_status
+
+    assert torch.isfinite(result.params).all()
+    assert torch.isfinite(result.gradient).all()
+    assert isinstance(status["success"], bool)
+    assert status["message"]
+    assert status["nonfinite_evaluations"] == 0
+    assert status["function_evaluations"] >= status["optimizer_iterations"]
+    assert torch.isfinite(torch.tensor(status["gradient_norm"]))
+    assert torch.isfinite(torch.tensor(status["gradient_max_abs"]))
+    assert torch.isfinite(torch.tensor(status["normalized_gradient_norm"]))
 
 
 def test_mixed_logit_correlated_random_coefficients():

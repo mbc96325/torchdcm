@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 import torch
+import torch.nn.functional as F
 
 from torchdcm.data.choice_dataset import ChoiceDataset
 from torchdcm.models._optimization import (
@@ -117,7 +118,7 @@ class WTPMixedLogit:
             raise ValueError(f"Unsupported WTP distributions: {invalid}")
 
         # Alternative constants and other non-WTP terms use the standard MNL
-        # compiler; monetary trade-offs are added as a separate random block.
+        # compiler. Monetary trade-offs are added as a separate random block.
         deterministic = MultinomialLogit(self.spec, dtype=self.dtype, device=self.device).compile(data)
         sigma_names = [coef.sigma_name or f"SIGMA_{coef.name}" for coef in self.wtp_coefficients]
         if len(set(sigma_names)) != len(sigma_names):
@@ -181,7 +182,7 @@ class WTPMixedLogit:
             utility = utility + compiled.deterministic_fixed_design @ compiled.deterministic_fixed_values
         utility = utility.unsqueeze(1)
         cost_values = data.x_alt[compiled.cost_variable].to(device=self.device, dtype=self.dtype).unsqueeze(1)
-        # WTP-space utility is alpha * (cost + w' x).  Multiplying every random
+        # WTP-space utility is alpha * (cost + w' x). Multiplying every random
         # WTP by the common cost coefficient preserves this interpretation.
         utility = utility + cost * cost_values
         if compiled.wtp_names:
@@ -228,7 +229,7 @@ class WTPMixedLogit:
         internal_params = self._initial_internal(compiled).clone().detach().requires_grad_(True)
         optimizer = TrackedLBFGS(
             [internal_params],
-            max_iter=max_iter or self.max_iter,
+            max_iter=self.max_iter if max_iter is None else max_iter,
             tolerance_grad=self.tolerance_grad,
             line_search_fn=self.line_search_fn,
         )
@@ -429,7 +430,7 @@ class WTPMixedLogit:
         return torch.cat(parts) if parts else torch.zeros(0, dtype=self.dtype, device=self.device)
 
     def _internal_to_natural(self, internal: torch.Tensor, compiled: CompiledWTPMixedUtility) -> torch.Tensor:
-        # Only free scale parameters require transformation; utility, cost,
+        # Only free scale parameters require transformation. Utility, cost,
         # WTP means, and Cholesky off-diagonals remain unrestricted.
         cursor = 0
         parts = []
@@ -457,7 +458,9 @@ class WTPMixedLogit:
         cursor += int((~compiled.wtp_is_fixed).sum().detach().cpu())
         free_sigma_count = int((~compiled.sigma_is_fixed).sum().detach().cpu())
         if free_sigma_count:
-            diag[cursor : cursor + free_sigma_count] = torch.exp(internal[cursor : cursor + free_sigma_count])
+            diag[cursor : cursor + free_sigma_count] = torch.sigmoid(
+                internal[cursor : cursor + free_sigma_count]
+            )
         return torch.diag(diag)
 
     def _cholesky_factor(
@@ -484,10 +487,11 @@ class WTPMixedLogit:
     def _sigma_to_internal(self, sigmas: torch.Tensor) -> torch.Tensor:
         if sigmas.numel() == 0:
             return sigmas
-        return torch.log(torch.clamp(sigmas - self.sigma_min, min=1e-12))
+        shifted = torch.clamp(sigmas - self.sigma_min, min=1e-12)
+        return shifted + torch.log(-torch.expm1(-shifted))
 
     def _internal_to_sigma(self, internal: torch.Tensor) -> torch.Tensor:
-        return self.sigma_min + torch.exp(internal)
+        return self.sigma_min + F.softplus(internal)
 
     def _make_draws(self, n_random: int) -> torch.Tensor:
         if n_random == 0:
@@ -500,8 +504,8 @@ class WTPMixedLogit:
         generator = torch.Generator(device="cpu")
         generator.manual_seed(self.seed)
         if self.antithetic:
-            # Draw generation stays on CPU for reproducibility across devices;
-            # the completed matrix is transferred once at the end.
+            # Generate on CPU for reproducibility across devices and transfer
+            # the completed draw matrix once.
             half = (self.n_draws + 1) // 2
             base = torch.randn((half, n_random), generator=generator, dtype=self.dtype)
             draws = torch.cat([base, -base], dim=0)[: self.n_draws]

@@ -85,6 +85,23 @@ def test_fit_returns_covariances_and_predictions():
     assert "B_TIME" in result.summary()
 
 
+def test_custom_likelihood_extension_reuses_fit_inference_and_reporting():
+    class RidgeMNL(MultinomialLogit):
+        def loglike_per_obs(self, params, data, compiled=None):
+            base = super().loglike_per_obs(params, data, compiled)
+            penalty = 1e-4 * params.square().sum() / data.n_obs
+            return base - penalty
+
+    data = swissmetro_data(50)
+    result = RidgeMNL(swissmetro_spec(), max_iter=60).fit(data, cov_type="robust")
+    scores = result.model.scores(result.params, result.data)
+
+    assert torch.allclose(scores.sum(dim=0), result.gradient, atol=1e-7, rtol=1e-6)
+    assert result.cov_params("robust").shape == (4, 4)
+    assert result.predict_proba().shape == (data.n_rows,)
+    assert "B_TIME" in result.summary()
+
+
 def test_formula_api_and_london_case():
     df = make_london_like(n_obs=60, seed=4)
     data = ChoiceDataset.from_wide(
@@ -110,4 +127,3 @@ def test_formula_api_and_london_case():
     result = model.fit(data, cov_type="robust")
     assert len(result.param_names) == 5
     assert np.isfinite(result.values).all()
-

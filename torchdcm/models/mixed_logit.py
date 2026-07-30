@@ -5,6 +5,7 @@ from time import perf_counter
 from typing import Literal
 
 import torch
+import torch.nn.functional as F
 
 from torchdcm.data.choice_dataset import ChoiceDataset
 from torchdcm.models._optimization import (
@@ -114,8 +115,8 @@ class MixedLogit:
         if cache_key in self._compiled_cache:
             return self._compiled_cache[cache_key]
 
-        # Reuse the deterministic MNL compiler so utility parameter ordering,
-        # fixed coefficients, and balanced-choice detection stay identical.
+        # Reuse the deterministic MNL compiler so parameter ordering, fixed
+        # coefficients, and balanced-choice detection stay identical.
         mnl = MultinomialLogit(self.spec, dtype=self.dtype, device=self.device)
         compiled_mnl = mnl.compile(data)
         beta_index = {name: i for i, name in enumerate(compiled_mnl.free_names)}
@@ -151,7 +152,7 @@ class MixedLogit:
         )
         random_is_fixed_beta = random_fixed_indices >= 0
         # Draws are generated at compile time and reused by every likelihood
-        # evaluation.  This makes the simulated objective deterministic.
+        # evaluation, making the simulated objective deterministic.
         draws = self._make_draws(len(self.random_coefficients))
         free_sigma_names = [name for name, fixed in zip(sigma_names, sigma_is_fixed) if not bool(fixed)]
         chol_offdiag_names = []
@@ -196,8 +197,8 @@ class MixedLogit:
         compiled = compiled or self.compile(data)
         obs_log_prob = self._log_prob_per_obs_draw(params, data, compiled)
         if self.panel and data.obs_to_ind is not None:
-            # PanelStructure multiplies repeated conditional probabilities in
-            # log space before averaging over the shared taste draw.
+            # Repeated conditional probabilities are accumulated in log space
+            # before averaging over the shared taste draw.
             return data.panel_structure().logmeanexp_by_unit(obs_log_prob)
         return torch.logsumexp(obs_log_prob, dim=1) - torch.log(
             torch.as_tensor(compiled.draws.shape[0], dtype=self.dtype, device=self.device)
@@ -227,37 +228,97 @@ class MixedLogit:
                 compiled.chol_offdiag_initial,
             ]
         )
-        # Optimization occurs on an unrestricted internal scale.  Positive
-        # standard deviations are mapped back before evaluating the likelihood.
-        initial_loglike = float(
-            self.loglike(self._internal_to_natural(internal_initial, compiled), data, compiled).detach().cpu()
+        # Optimization occurs on an unrestricted internal scale. Positive
+        # standard deviations are mapped back before likelihood evaluation.
+        initial_loglike_tensor = self.loglike(
+            self._internal_to_natural(internal_initial, compiled), data, compiled
         )
+        if not bool(torch.isfinite(initial_loglike_tensor)):
+            raise RuntimeError(
+                "MixedLogit initial log-likelihood is non-finite. Check the "
+                "coefficient starts, random-coefficient scales, and data scaling."
+            )
+        initial_loglike = float(initial_loglike_tensor.detach().cpu())
         internal_params = internal_initial.clone().detach().requires_grad_(True)
+        requested_max_iter = self.max_iter if max_iter is None else max_iter
         optimizer = TrackedLBFGS(
             [internal_params],
-            max_iter=max_iter or self.max_iter,
+            max_iter=requested_max_iter,
             tolerance_grad=self.tolerance_grad,
             line_search_fn=self.line_search_fn,
         )
         iterations = {"count": 0}
+        best = {
+            "loss": -initial_loglike,
+            "internal": internal_initial.detach().clone(),
+        }
+        nonfinite_evaluations = {"count": 0}
 
         def closure():
             optimizer.zero_grad(set_to_none=True)
             natural = self._internal_to_natural(internal_params, compiled)
             loss = -self.loglike(natural, data, compiled)
+            if not bool(torch.isfinite(loss)):
+                nonfinite_evaluations["count"] += 1
+                raise _NonFiniteOptimizationError(
+                    "MixedLogit optimization encountered a non-finite likelihood."
+                )
             loss.backward()
+            if internal_params.grad is None or not bool(
+                torch.isfinite(internal_params.grad).all()
+            ):
+                nonfinite_evaluations["count"] += 1
+                raise _NonFiniteOptimizationError(
+                    "MixedLogit optimization encountered a non-finite gradient."
+                )
             iterations["count"] += 1
+            loss_value = float(loss.detach().cpu())
+            if loss_value < best["loss"]:
+                best["loss"] = loss_value
+                best["internal"] = internal_params.detach().clone()
             return loss
 
         optimization_started = perf_counter()
-        optimizer.step(closure)
+        optimization_message = None
+        try:
+            optimizer.step(closure)
+        except _NonFiniteOptimizationError as exc:
+            optimization_message = str(exc)
+            with torch.no_grad():
+                internal_params.copy_(best["internal"])
         optimization_seconds = perf_counter() - optimization_started
         inference_started = perf_counter()
+        candidate_loglike = self.loglike(
+            self._internal_to_natural(internal_params.detach(), compiled),
+            data,
+            compiled,
+        )
+        candidate_loss = float((-candidate_loglike).detach().cpu()) if bool(
+            torch.isfinite(candidate_loglike)
+        ) else float("inf")
+        if candidate_loss > best["loss"]:
+            with torch.no_grad():
+                internal_params.copy_(best["internal"])
+        elif candidate_loss < best["loss"]:
+            best["loss"] = candidate_loss
+            best["internal"] = internal_params.detach().clone()
         final_internal = internal_params.detach().clone()
         final_internal.requires_grad_(True)
         final_natural = self._internal_to_natural(final_internal, compiled)
         ll = self.loglike(final_natural, data, compiled)
         internal_gradient = torch.autograd.grad(ll, final_internal)[0].detach()
+        natural_for_grad = final_natural.detach().clone().requires_grad_(True)
+        gradient = torch.autograd.grad(self.loglike(natural_for_grad, data, compiled), natural_for_grad)[0].detach()
+        if not (
+            bool(torch.isfinite(final_natural).all())
+            and bool(torch.isfinite(ll))
+            and bool(torch.isfinite(internal_gradient).all())
+            and bool(torch.isfinite(gradient).all())
+        ):
+            raise RuntimeError(
+                "MixedLogit optimization ended with non-finite parameters, "
+                "log-likelihood, or gradients."
+            )
         convergence_status = lbfgs_convergence_status(
             optimizer,
             internal_gradient,
@@ -265,19 +326,41 @@ class MixedLogit:
             n_obs=data.n_obs,
             closure_evaluations=iterations["count"],
         )
-        natural_for_grad = final_natural.detach().clone().requires_grad_(True)
-        gradient = torch.autograd.grad(self.loglike(natural_for_grad, data, compiled), natural_for_grad)[0].detach()
+        maximum_evaluations = int(optimizer.param_groups[0]["max_eval"])
+        if optimization_message is not None:
+            convergence_status.update(
+                {
+                    "success": False,
+                    "message": (
+                        "Stopped (non-finite likelihood or gradient); restored "
+                        "the best finite iterate"
+                    ),
+                    "termination_code": "nonfinite_evaluation",
+                    "warnings": [optimization_message],
+                }
+            )
         hessian_internal = torch.autograd.functional.hessian(
             lambda p: self.loglike(self._internal_to_natural(p, compiled), data, compiled),
             final_internal,
         )
+        if not bool(torch.isfinite(hessian_internal).all()):
+            raise RuntimeError(
+                "MixedLogit Hessian is non-finite at the final finite iterate."
+            )
         information_internal = -hessian_internal.detach()
         cov_internal = _safe_pinv(information_internal)
-        # Delta-method transformation reports covariance on the natural scale
-        # seen by users rather than on the optimizer's log-sigma scale.
+        # The delta method maps covariance from the unrestricted optimizer
+        # scale to the nonnegative standard-deviation scale reported to users.
         transform_jac = self._natural_jacobian(final_internal.detach(), compiled)
         cov_classic = transform_jac @ cov_internal @ transform_jac.T
         hessian_natural = torch.autograd.functional.hessian(lambda p: self.loglike(p, data, compiled), final_natural.detach())
+        if not (
+            bool(torch.isfinite(cov_classic).all())
+            and bool(torch.isfinite(hessian_natural).all())
+        ):
+            raise RuntimeError(
+                "MixedLogit covariance or natural-scale Hessian is non-finite."
+            )
         information = -hessian_natural.detach()
         inference_seconds = perf_counter() - inference_started
         total_seconds = perf_counter() - fit_started
@@ -296,6 +379,14 @@ class MixedLogit:
             n_params=len(compiled.free_names),
             convergence_status={
                 **convergence_status,
+                "maximum_iterations": requested_max_iter,
+                "maximum_function_evaluations": maximum_evaluations,
+                "gradient_max_abs": convergence_status["gradient_norm"],
+                "natural_gradient_norm": float(
+                    torch.linalg.vector_norm(gradient).detach().cpu()
+                ),
+                "nonfinite_evaluations": nonfinite_evaluations["count"],
+                "best_loglike": -best["loss"],
                 "n_draws": compiled.draws.shape[0],
                 "panel": self.panel and data.obs_to_ind is not None,
                 "initial_loglike": initial_loglike,
@@ -365,7 +456,7 @@ class MixedLogit:
             return means, torch.empty((compiled.draws.shape[0], 0), dtype=self.dtype, device=self.device)
         cholesky = self._cholesky_factor(sigmas, chol_offdiag, compiled)
         # Matrix multiplication creates all correlated latent-normal shocks as
-        # an (n_draws, n_random) block.
+        # an R-by-K random block without a row-by-draw-by-parameter tensor.
         latent_noise = compiled.draws @ cholesky.T
         random_means = self._random_means(means, compiled)
         latent = random_means.unsqueeze(0) + latent_noise
@@ -453,7 +544,7 @@ class MixedLogit:
         compiled: CompiledMixedUtility,
     ) -> torch.Tensor:
         means, transformed_betas = self._drawn_random_betas(params, compiled)
-        # Evaluate the contribution shared by all draws once.  Only columns
+        # Evaluate the contribution shared by all draws once. Only columns
         # attached to random coefficients receive a draw-specific update.
         utility = (compiled.design @ means).unsqueeze(1)
         if compiled.fixed_values.numel():
@@ -505,7 +596,9 @@ class MixedLogit:
         n_beta = len(compiled.beta_names)
         free_count = int((~compiled.sigma_is_fixed).sum().detach().cpu())
         if free_count:
-            diag[n_beta : n_beta + free_count] = torch.exp(internal[n_beta : n_beta + free_count])
+            diag[n_beta : n_beta + free_count] = torch.sigmoid(
+                internal[n_beta : n_beta + free_count]
+            )
         return torch.diag(diag)
 
     def _cholesky_factor(
@@ -533,10 +626,11 @@ class MixedLogit:
     def _sigma_to_internal(self, sigmas: torch.Tensor) -> torch.Tensor:
         if sigmas.numel() == 0:
             return sigmas
-        return torch.log(torch.clamp(sigmas - self.sigma_min, min=1e-12))
+        shifted = torch.clamp(sigmas - self.sigma_min, min=1e-12)
+        return shifted + torch.log(-torch.expm1(-shifted))
 
     def _internal_to_sigma(self, internal: torch.Tensor) -> torch.Tensor:
-        return self.sigma_min + torch.exp(internal)
+        return self.sigma_min + F.softplus(internal)
 
     def _make_draws(self, n_random: int) -> torch.Tensor:
         if n_random == 0:
@@ -571,3 +665,7 @@ def _balanced_width(data: ChoiceDataset) -> int | None:
 
 def _safe_pinv(matrix: torch.Tensor) -> torch.Tensor:
     return torch.linalg.pinv(matrix, hermitian=True)
+
+
+class _NonFiniteOptimizationError(RuntimeError):
+    pass

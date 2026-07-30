@@ -97,3 +97,24 @@ def test_wtp_mixed_logit_correlated_wtp_draws():
     assert torch.allclose(cholesky, torch.tensor([[0.2, 0.0], [0.25, 0.3]], dtype=torch.float64))
     assert torch.allclose(drawn, wtp.unsqueeze(0) + draws @ cholesky.T)
     assert torch.isfinite(model.loglike(params, data, compiled))
+
+
+def test_wtp_mixed_logit_softplus_scale_transform_is_finite_and_invertible():
+    model = WTPMixedLogit(
+        asc_spec(),
+        cost=Beta("B_COST", init=-1.0),
+        cost_variable="cost",
+        wtp_coefficients=[
+            WTPCoefficient("WTP_TIME", "time", init=0.5, sigma_init=0.2)
+        ],
+        draws=torch.zeros((1, 1), dtype=torch.float64),
+    )
+    internal = torch.tensor([-1000.0, 0.0, 1000.0], dtype=torch.float64)
+    scales = model._internal_to_sigma(internal)
+
+    assert torch.isfinite(scales).all()
+    assert torch.allclose(scales[-1], torch.tensor(1000.0, dtype=torch.float64))
+
+    target = torch.tensor([1e-8, 0.1, 1.0, 1000.0], dtype=torch.float64)
+    roundtrip = model._internal_to_sigma(model._sigma_to_internal(target))
+    assert torch.allclose(roundtrip, target, rtol=1e-10, atol=1e-12)

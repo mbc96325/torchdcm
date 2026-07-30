@@ -30,7 +30,12 @@ class CompiledUtility:
 
 
 class MultinomialLogit:
-    """Multinomial/conditional logit model with ragged choice sets."""
+    """Multinomial/conditional logit model with ragged choice sets.
+
+    ``loglike_per_obs`` is the public likelihood-extension point. Subclasses
+    can override it to return one differentiable log-likelihood contribution
+    per observation while reusing fitting, inference, prediction, and reports.
+    """
 
     def __init__(
         self,
@@ -74,7 +79,7 @@ class MultinomialLogit:
         fixed_design = torch.zeros((data.n_rows, len(fixed_params)), dtype=self.dtype, device=self.device)
 
         # Compilation turns named utility terms into dense row-by-parameter
-        # tensors once.  Optimizer iterations then require only matrix products.
+        # tensors once. Optimizer iterations then require only matrix products.
         for alt_name, expr in self.spec.utilities.items():
             rows = data.alt_id == alt_to_code[alt_name]
             for term in expr.terms:
@@ -85,8 +90,8 @@ class MultinomialLogit:
                 )
                 contribution = term.multiplier * values
                 if term.parameter.fixed:
-                    # Fixed terms are kept outside the differentiable parameter
-                    # vector but still evaluated through the same utility path.
+                    # Fixed terms stay outside the differentiable parameter
+                    # vector but still use the common utility path.
                     fixed_design[rows, fixed_index[term.parameter.name]] += contribution[rows]
                 else:
                     design[rows, free_index[term.parameter.name]] += contribution[rows]
@@ -124,8 +129,8 @@ class MultinomialLogit:
         utility = self.utilities(params, data, compiled)
         width = compiled.choice_set_width
         if width is not None:
-            # Balanced data can be reshaped to (observations, alternatives) and
-            # evaluated by one vectorized log-sum-exp call.
+            # Balanced data can be reshaped to observations by alternatives and
+            # evaluated by one vectorized log-sum-exp operation.
             utility_by_obs = utility.reshape(data.n_obs, width)
             availability = data.availability.reshape(data.n_obs, width)
             if not bool(availability.any(dim=1).all()):
@@ -135,7 +140,7 @@ class MultinomialLogit:
             log_denom = torch.logsumexp(utility_by_obs.masked_fill(~availability, -torch.inf), dim=1)
             return data.weights * (chosen_utility - log_denom)
 
-        # Ragged data remain in row-pointer form; segmented reductions avoid
+        # Ragged data remain in row-pointer form. Segmented reductions avoid
         # padding every observation to the largest choice set.
         return _ragged_loglike_per_obs(utility, data, compiled.row_to_obs)
 
@@ -159,7 +164,7 @@ class MultinomialLogit:
         initial_loglike = float(self.loglike(params.detach(), data, compiled).detach().cpu())
         optimizer = TrackedLBFGS(
             [params],
-            max_iter=max_iter or self.max_iter,
+            max_iter=self.max_iter if max_iter is None else max_iter,
             tolerance_grad=self.tolerance_grad,
             line_search_fn=self.line_search_fn,
         )
@@ -190,13 +195,13 @@ class MultinomialLogit:
         hessian_ll = torch.autograd.functional.hessian(lambda p: self.loglike(p, data, compiled), final_params)
         information = -hessian_ll.detach()
         # The pseudoinverse remains defined for weakly identified or redundant
-        # specifications and is reported with rank diagnostics downstream.
+        # specifications and is accompanied by rank diagnostics in the report.
         cov_classic = _safe_pinv(information)
         covariances = {"classic": cov_classic}
         n_clusters = None
         if cov_type in {"robust", "cluster"}:
             scores = self.scores(final_params.detach(), data, compiled)
-            # Observation scores form the sandwich "meat"; clustering first
+            # Observation scores form the sandwich "meat." Clustering first
             # sums scores within each group before taking outer products.
             meat = scores.T @ scores
             covariances["robust"] = cov_classic @ meat @ cov_classic
@@ -244,14 +249,16 @@ class MultinomialLogit:
         data = data.to(device=self.device, dtype=self.dtype)
         compiled = compiled or self.compile(data)
         width = compiled.choice_set_width
-        if width is not None:
+        uses_default_likelihood = self.__class__.loglike_per_obs is MultinomialLogit.loglike_per_obs
+        if width is not None and uses_default_likelihood:
             probabilities = self.predict_proba(data, params, compiled).reshape(data.n_obs, width)
             design = compiled.design.reshape(data.n_obs, width, len(compiled.free_names))
             chosen_local = (data.chosen_row - data.obs_ptr[:-1]).reshape(-1, 1, 1)
             chosen_design = design.gather(1, chosen_local.expand(-1, 1, design.shape[-1])).squeeze(1)
             expected_design = (probabilities.unsqueeze(-1) * design).sum(dim=1)
-            # For MNL the score is observed minus probability-weighted expected
-            # design, so no per-observation autograd loop is needed.
+            # For the standard MNL kernel, the score is observed minus
+            # probability-weighted expected design, so no autograd loop is
+            # needed.
             return data.weights.unsqueeze(1) * (chosen_design - expected_design)
 
         rows = []
@@ -345,8 +352,8 @@ def _ragged_probabilities(utility: torch.Tensor, data: ChoiceDataset, row_to_obs
 
 def _ragged_loglike_per_obs(utility: torch.Tensor, data: ChoiceDataset, row_to_obs: torch.Tensor) -> torch.Tensor:
     masked_utility = utility.masked_fill(~data.availability, -torch.inf)
-    # Reproduce logsumexp with scatter reductions because choice sets have
-    # different lengths and cannot be reshaped into a rectangular tensor.
+    # Reproduce logsumexp with scatter reductions because ragged choice sets
+    # cannot be reshaped into a rectangular tensor.
     max_by_obs = torch.full((data.n_obs,), -torch.inf, dtype=utility.dtype, device=utility.device)
     max_by_obs = max_by_obs.scatter_reduce(0, row_to_obs, masked_utility, reduce="amax", include_self=True)
     if not bool(torch.isfinite(max_by_obs).all()):
