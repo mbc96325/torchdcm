@@ -20,6 +20,7 @@
   <a href="https://pypi.org/project/torchdcm/"><img alt="PyPI" src="https://img.shields.io/pypi/v/torchdcm"></a>
   <a href="https://pypi.org/project/torchdcm/"><img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue"></a>
   <a href="https://pytorch.org/"><img alt="PyTorch" src="https://img.shields.io/badge/backend-PyTorch-ee4c2c"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green"></a>
   <a href="#model-zoo"><img alt="Models" src="https://img.shields.io/badge/models-MNL%20%7C%20NL%20%7C%20Mixed%20Logit%20%7C%20Hybrid-2b9348"></a>
   <a href="https://github.com/mbc96325/torchdcm-evaluation-benchmark"><img alt="Benchmarks" src="https://img.shields.io/badge/benchmarks-Biogeme%20%7C%20Apollo%20%7C%20mlogit%20%7C%20xlogit-6c63ff"></a>
   <a href="#development"><img alt="Status" src="https://img.shields.io/badge/status-research%20prototype-f59f00"></a>
@@ -191,6 +192,10 @@ The current package includes:
 | `examples/` | Executed Jupyter notebooks covering every public model family. |
 | `docs/assets/` | GitHub README logo and cover assets. |
 | `pyproject.toml` | Packaging metadata and dependencies. |
+
+## License
+
+TorchDCM is released under the [MIT License](LICENSE).
 
 ## Development
 
