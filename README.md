@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <b>PyTorch-first discrete choice model estimation and econometric inference.</b>
+  <b>A unified PyTorch-native package for discrete choice modeling.</b>
 </p>
 
 <p align="center">
